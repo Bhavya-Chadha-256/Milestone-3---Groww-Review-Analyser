@@ -70,6 +70,9 @@ def classify_reviews(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hi
         [review.review_id for review in reviews], taxonomy.version, prompt_version()
     )
     pending = [review for review in reviews if review.review_id not in cached]
+    pending.sort(
+        key=lambda review: review.posted_at, reverse=True
+    )  # newest first: a partial backfill covers recent weeks
     result = ClassifyResult(classifications=dict(cached), from_cache=len(cached))
     classifier = _ChunkClassifier(llm, taxonomy)
     for start in range(0, len(pending), chunk_size):

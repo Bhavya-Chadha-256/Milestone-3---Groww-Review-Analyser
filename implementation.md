@@ -1554,7 +1554,8 @@ Expected: all passed.
 > - **Two kinds of unlabelled review:** *skipped* (the model left the key out) is re-queued once (LLM-4). *Failed* (refused after its one split retry, truncated as a single review, or schema-invalid after the re-ask) is not retried again. Both end in `unclassified`.
 > - **Token estimate:** `estimate_classify_tokens` is `chunks × system_tokens + pending × 50 + min(pending × 30, chunks × max_tokens)`, which gives about 226K for the 2,177-review backfill. `system_tokens(taxonomy)` gives the system-prompt estimate.
 > - **System prompt:** `classify.md` plus a JSON catalogue of the taxonomy's themes.
-> - **Extra tests:** `test_single_review_that_truncates_is_unclassified`, `test_estimate_classify_tokens_scales_with_chunks`.
+> - **Order (2026-10-22, after the fix pass):** pending reviews are sent newest first, so a backfill stopped by the daily budget has labelled the most recent weeks, which the pulse reports on. Day 1 ran oldest first, so its 800 labels cover 27 Jul – 26 Aug.
+> - **Extra tests:** `test_single_review_that_truncates_is_unclassified`, `test_estimate_classify_tokens_scales_with_chunks`., `test_newest_reviews_are_classified_first`.
 
 **Expected load (D7):** the first real run has about 2,177 pending reviews, which is 44 chunks and was estimated at about 240K tokens. At 200K tokens a day, minus the 20K reserve, that would finish over two days. **Observed on 2026-10-22:** about 180 tokens per review, so about 3 days. The second day is `pulse run --from classify`, and the cache keeps the first day's work. Pacing is about 1–2 requests a minute, so about 30 minutes of classification a day. Later weeks add 115–274 reviews, about 15–30K tokens, in one sitting.
 

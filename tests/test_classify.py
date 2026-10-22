@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -196,3 +196,19 @@ def test_prompt_version_comes_from_prompt_file(
     result = classify_reviews(llm, tmp_store, reviews(5), taxonomy())
     assert result.from_cache == 0 and result.sent == 5
     assert {label.prompt_version for label in result.classifications.values()} == {"classify-v2"}
+
+
+def test_newest_reviews_are_classified_first(
+    tmp_store: Store,
+) -> None:  # LLM-13: a partial backfill covers recent weeks
+    dated = [
+        make_review(
+            review_id=f"r{index:04d}", posted_at=datetime(2026, 8, 1, tzinfo=UTC) + timedelta(days=index)
+        )
+        for index in range(150)
+    ]
+    llm = FakeLLM({"classify": echo_handler()}, tokens_left=2 * CHUNK_TOKENS, tokens_per_call=CHUNK_TOKENS)
+    result = classify_reviews(llm, tmp_store, dated, taxonomy())
+    assert result.stopped_for_budget and set(result.classifications) == {
+        f"r{index:04d}" for index in range(50, 150)
+    }
