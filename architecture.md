@@ -814,6 +814,8 @@ These carry over from [problemStatement.md §9](problemStatement.md), plus new o
 
 ## 16. Dashboard (Phase 7, added 2026-10-22)
 
+> **Hosted copy [Decision, user, 2026-10-22; Task 7.5]:** a read-only copy runs on Render's free tier (`render.yaml`, `deployment.md`). The laptop exports `deploy/snapshot/` (`pulse snapshot`: the database gzip-compressed, plus each week's newest pulse artifacts), commits it to this **public** repo, and pushes; Render redeploys and serves it with `pulse serve --public --snapshot deploy/snapshot`. Public mode requires `dashboard.read_only` and named `public_hosts` (`RENDER_EXTERNAL_HOSTNAME`): no run jobs, no MCP or Groq calls, no secrets, open to anyone with the link (user's choice). `/healthz` is exempt from the Host check. The default week follows the data (the latest week it covers) and the page shows partial-data states (labelling in progress, no themes, no pulse, server waking).
+
 A local web page for the team: explore reviews with filters, and read, generate and send the weekly pulse. It goes beyond the brief and changes nothing in the pipeline.
 
 ```

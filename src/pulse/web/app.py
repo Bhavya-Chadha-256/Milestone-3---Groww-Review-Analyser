@@ -8,7 +8,7 @@ access log, and query strings and review text never reach a log line (E-WEB-3).
 import csv
 import io
 from dataclasses import asdict
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +63,7 @@ def create_app(settings: Settings, *, today: date | None = None, hooks: ServerHo
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.dashboard = DashboardState(settings, today, hooks or ServerHooks())
     _install_guards(app, settings)
+    app.include_router(health)
     app.include_router(router)
     app.include_router(actions_router)
     if WEB_DIR.is_dir():
@@ -75,7 +76,7 @@ def _install_guards(app: FastAPI, settings: Settings) -> None:
 
     @app.middleware("http")
     async def guard(request: Request, call_next: Any) -> Response:
-        if request.headers.get("host") not in allowed:  # DNS rebinding
+        if request.url.path != "/healthz" and request.headers.get("host") not in allowed:  # DNS rebinding
             return JSONResponse({"error": "host not allowed"}, status_code=400)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -133,10 +134,17 @@ def _positive(value: str) -> int | None:
 
 
 router = APIRouter(prefix="/api")
+health = APIRouter()
 
 
 def dashboard(request: Request) -> DashboardState:
     return request.app.state.dashboard
+
+
+@health.get("/healthz")
+def health_route() -> dict[str, bool]:
+    """Render's health check: no data, exempt from the Host check (the probe uses an internal name)."""
+    return {"ok": True}
 
 
 @router.get("/meta")
@@ -145,7 +153,7 @@ def meta_route(request: Request) -> dict[str, Any]:
     state = dashboard(request)
     if state.store() is None:
         return {"ready": False}
-    return _meta(state.dataset(week), state.settings)
+    return _meta(state.dataset(week), state)
 
 
 @router.get("/summary")
@@ -209,7 +217,8 @@ def quality_route(request: Request) -> dict[str, Any]:
     return data_quality(dashboard(request).dataset(week), flt)
 
 
-def _meta(dataset: Dataset, settings: Settings) -> dict[str, Any]:
+def _meta(dataset: Dataset, state: DashboardState) -> dict[str, Any]:
+    settings = state.settings
     window = dataset.window
     in_window = [
         review
@@ -229,9 +238,21 @@ def _meta(dataset: Dataset, settings: Settings) -> dict[str, Any]:
         "languages": sorted({review.language for review in dataset.reviews}),
         "total": len(in_window),
         "eligible": sum(review.excluded_reason is None for review in in_window),
+        "classified": sum(
+            review.excluded_reason is None and review.review_id in dataset.labels for review in in_window
+        ),
+        "read_only": settings.dashboard.read_only,
+        "data_updated_at": _updated_at(state),
         "page_size": settings.dashboard.page_size,
         "allow_export": settings.dashboard.allow_export,
     }
+
+
+def _updated_at(state: DashboardState) -> str | None:
+    store = state.store()
+    if store is None:
+        return None
+    return datetime.fromtimestamp(store.path.stat().st_mtime, UTC).isoformat(timespec="seconds")
 
 
 def _version_key(version: str) -> tuple[tuple[int, str], ...]:

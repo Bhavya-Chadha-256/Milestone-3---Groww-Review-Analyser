@@ -17,7 +17,6 @@ from pydantic import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    field_validator,
     model_validator,
 )
 
@@ -184,7 +183,8 @@ class DeliverySettings(StrictModel):
 
 
 class DashboardSettings(StrictModel):
-    """`pulse serve` (Task 7.2): local only, so the host must be a loopback address."""
+    """`pulse serve` (Task 7.2). Local by default: the host is a loopback address. A public host (the
+    read-only Render deployment, Task 7.5) is allowed only with `read_only` and named `public_hosts`."""
 
     host: str = "127.0.0.1"
     port: PositiveInt = 8787
@@ -192,17 +192,22 @@ class DashboardSettings(StrictModel):
     max_page_size: PositiveInt = 200
     allow_export: bool = True
     export_max_rows: PositiveInt = 5000
+    read_only: bool = False  # no run jobs and no MCP checks: the hosted dashboard only reads a snapshot
+    public_hosts: list[str] = []  # Host headers a public deployment answers to, e.g. its onrender.com name
 
-    @field_validator("host")
-    @classmethod
-    def _loopback_only(cls, host: str) -> str:
+    @model_validator(mode="after")
+    def _public_only_when_read_only(self) -> Self:
         try:
-            loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+            loopback = self.host == "localhost" or ipaddress.ip_address(self.host).is_loopback
         except ValueError:
             loopback = False
-        if not loopback:
-            raise ValueError("dashboard.host must be a loopback address (127.0.0.1, ::1 or localhost)")
-        return host
+        if loopback:
+            return self
+        if not self.read_only:
+            raise ValueError("dashboard.host must be a loopback address unless the dashboard is read-only")
+        if not self.public_hosts:
+            raise ValueError("a public dashboard must list its public_hosts (DNS-rebinding protection)")
+        return self
 
 
 class IngestSettings(StrictModel):

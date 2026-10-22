@@ -189,4 +189,9 @@ Task 7.4: Ruling: elements with no data behind them (keywords, helpful votes, re
 Task 7.4: Ruling: "Hide duplicate reviews" starts unchecked so the default view equals aggregates.json (E-WEB-1) — cost if wrong: one default.
 Task 7.4: Ruling: CSP also allows Google Fonts and 'unsafe-inline' styles (the Tailwind CDN injects a style element) — cost if wrong: self-host fonts/CSS.
 Task 7.3: Ruling: delivery readiness = doctor's delivery_config + mcp_tools only (no Groq call), passing result cached 5 min — cost if wrong: a stale "ready" for ≤5 min; the pipeline's own pre-check still guards.
+Task 7.5 (2026-10-22): user asked to deploy on Render. Decisions (user): snapshot committed to this PUBLIC repo; dashboard open to anyone with the link. Built read-only hosted mode + pulse snapshot + render.yaml + deployment.md; 507 tests. No env vars needed on Render.
+Task 7.5: Ruling: hosted mode is read-only (no jobs, no MCP/Groq, no secrets) — a public page must not spend tokens or publish — cost if wrong: none.
+Task 7.5: Ruling: snapshot = gzip(SQLite backup) with mtime=0 + newest pulse run per week — ~1.2 MB per update in git history — cost if wrong: move to a release asset or a private repo.
+Task 7.5: Ruling: /healthz exempt from the Host check (Render's probe uses an internal name) — no data on it — cost if wrong: none.
+User (2026-10-22): asked to push everything; pushed phase-3/4/5/7 branches (not archive/full-history), no merges.
 ```

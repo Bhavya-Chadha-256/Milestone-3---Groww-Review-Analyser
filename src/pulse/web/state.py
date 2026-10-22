@@ -5,7 +5,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from pulse.config import Settings
@@ -54,8 +54,15 @@ def valid_week(week: str) -> bool:
 
 
 def allowed_hosts(settings: Settings) -> set[str]:
+    """Host headers to answer: loopback locally, plus a public deployment's own names (Task 7.5)."""
     port, host = settings.dashboard.port, settings.dashboard.host
-    return {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}", f"{host}:{port}"}
+    local = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}", f"{host}:{port}"}
+    public = {
+        name
+        for public_host in settings.dashboard.public_hosts
+        for name in (public_host, f"{public_host}:{port}")
+    }
+    return local | public
 
 
 class DashboardState:
@@ -81,8 +88,18 @@ class DashboardState:
         window = self.settings.window
         if week:
             return window_for_week(week, window.weeks, window.timezone)
-        today = self.today or today_in_tz(window.timezone, self.hooks.now())
-        return resolve_window(today, window.weeks, window.timezone)
+        return resolve_window(self.today or self._data_today(), window.weeks, window.timezone)
+
+    def _data_today(self) -> date:
+        """Today, unless the data stops earlier: then the day after the newest review, so the default week is
+        the latest one the data covers (the snapshot may lag while the backfill catches up)."""
+        timezone = self.settings.window.timezone
+        today = today_in_tz(timezone, self.hooks.now())
+        store = self.store()
+        latest = store.latest_posted_at() if store else None
+        if latest is None:
+            return today
+        return min(today, today_in_tz(timezone, latest) + timedelta(days=1))
 
     def dataset(self, week: str | None) -> Dataset:
         store = self.store()

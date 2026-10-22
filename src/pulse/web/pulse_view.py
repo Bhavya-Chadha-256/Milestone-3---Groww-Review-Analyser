@@ -32,16 +32,19 @@ class Readiness:
 
 
 def pulse_view(store: Store, settings: Settings, iso_week: str) -> dict[str, Any] | None:
-    """The week's latest run as the page shows it, or None when the week has no run at all."""
-    run = store.latest_run(iso_week)
-    if run is None:
+    """The week's newest run that has a pulse (else its latest run) as the page shows it, or None when the
+    week has no run at all. A later backfill run that stopped early doesn't hide a validated pulse."""
+    latest = store.latest_run(iso_week)
+    if latest is None:
         return None
+    run = latest_with_pulse(store, settings, iso_week) or latest
     run_dir = Path(settings.paths.runs) / run["run_id"]
     delivery = store.get_delivery(iso_week)
     view: dict[str, Any] = {
         "run_id": run["run_id"],
         "iso_week": iso_week,
         "status": run["status"],
+        "latest_status": latest["status"],
         "created_at": run["created_at"],
         "delivery": {
             "doc_url": delivery.doc_url if delivery else None,
@@ -55,6 +58,14 @@ def pulse_view(store: Store, settings: Settings, iso_week: str) -> dict[str, Any
     markdown = markdown_path.read_text(encoding="utf-8")
     fields = _pulse_fields(ctx, markdown, run_dir)
     return view | {"has_pulse": True, "markdown": markdown, "max_words": settings.pulse.max_words, **fields}
+
+
+def latest_with_pulse(store: Store, settings: Settings, iso_week: str) -> dict[str, Any] | None:
+    for run_id in store.run_ids_for_week(iso_week):
+        run_dir = Path(settings.paths.runs) / run_id
+        if (run_dir / "pulse.md").is_file() and all((run_dir / name).is_file() for name in PULSE_ARTIFACTS):
+            return store.get_run(run_id)
+    return None
 
 
 def _window(data: dict[str, str]) -> Window:

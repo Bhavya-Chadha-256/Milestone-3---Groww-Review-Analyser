@@ -1,0 +1,16 @@
+# Render Blueprint for the hosted, read-only dashboard (deployment.md, Task 7.5).
+# It serves the committed data snapshot (deploy/snapshot/); refresh it with `pulse snapshot` and push.
+# No secrets: the hosted dashboard never calls Groq or the MCP server.
+services:
+  - type: web
+    name: groww-review-pulse
+    runtime: python
+    plan: free
+    branch: phase-7-dashboard          # switch to main once the phases are merged
+    buildCommand: pip install -e ".[web]"
+    startCommand: pulse serve --public --snapshot deploy/snapshot
+    healthCheckPath: /healthz
+    autoDeploy: true                   # every push (e.g. a new snapshot) redeploys
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8

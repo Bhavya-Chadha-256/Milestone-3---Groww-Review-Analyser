@@ -56,6 +56,18 @@ def _placeholders(count: int) -> str:
     return ",".join("?" * count)
 
 
+def _run_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    run_id, week, status, created_at, window, summary = row
+    return {
+        "run_id": run_id,
+        "iso_week": week,
+        "status": status,
+        "created_at": created_at,
+        "window": json.loads(window),
+        "summary": json.loads(summary),
+    }
+
+
 class Store:
     def __init__(self, path: Path) -> None:
         path = Path(path)
@@ -123,6 +135,11 @@ class Store:
         """Every stored review, oldest first."""
         rows = self.conn.execute("SELECT data FROM reviews ORDER BY posted_at, review_id")
         return [Review.model_validate_json(data) for (data,) in rows]
+
+    def latest_posted_at(self) -> datetime | None:
+        """When the newest stored review was posted (UTC), or None for an empty store."""
+        (latest,) = self.conn.execute("SELECT MAX(posted_at) FROM reviews").fetchone()
+        return datetime.fromisoformat(latest).replace(tzinfo=UTC) if latest else None
 
     def review_ids(self) -> set[str]:
         return {review_id for (review_id,) in self.conn.execute("SELECT review_id FROM reviews")}
@@ -211,17 +228,21 @@ class Store:
             "WHERE iso_week = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (iso_week,),
         ).fetchone()
-        if row is None:
-            return None
-        run_id, week, status, created_at, window, summary = row
-        return {
-            "run_id": run_id,
-            "iso_week": week,
-            "status": status,
-            "created_at": created_at,
-            "window": json.loads(window),
-            "summary": json.loads(summary),
-        }
+        return _run_row(row) if row else None
+
+    def run_ids_for_week(self, iso_week: str) -> list[str]:
+        """The week's runs, newest first."""
+        rows = self.conn.execute(
+            "SELECT run_id FROM runs WHERE iso_week = ? ORDER BY created_at DESC, rowid DESC", (iso_week,)
+        )
+        return [run_id for (run_id,) in rows]
+
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT run_id, iso_week, status, created_at, window, summary FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        return _run_row(row) if row else None
 
     # Deliveries
 

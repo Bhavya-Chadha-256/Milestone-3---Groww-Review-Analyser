@@ -1,7 +1,9 @@
 """`pulse` command-line interface: `fetch`, `raw status`, `run`, `ingest`, `eval` and `doctor`."""
 
 import functools
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -15,7 +17,7 @@ from pydantic import ValidationError
 from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
-from pulse.config import Settings, load_env, load_settings
+from pulse.config import DashboardSettings, Settings, load_env, load_settings
 from pulse.deliver.mcp_client import (
     McpConfig,
     broken_gateway,
@@ -429,11 +431,22 @@ def delivery_readiness(settings: Settings) -> Any:
 
 
 @app.command("serve")
-def serve_command(
+def serve_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on closing line)
     ctx: typer.Context,
-    port: int | None = typer.Option(None, "--port", help="Port (default: dashboard.port, 8787)."),
+    port: int | None = typer.Option(
+        None, "--port", help="Port (default: dashboard.port, or $PORT with --public)."
+    ),
+    public: bool = typer.Option(
+        False, "--public", help="Read-only on all interfaces, for Render (deployment.md); needs --snapshot."
+    ),
+    snapshot: Path | None = typer.Option(
+        None, "--snapshot", help="Serve an exported snapshot (pulse snapshot)."
+    ),
+    allowed_host: list[str] = typer.Option(
+        [], "--allowed-host", help="Public hostname (default: $RENDER_EXTERNAL_HOSTNAME)."
+    ),
 ) -> None:
-    """Open the local, read-only dashboard in your browser (needs: uv sync --extra web)."""
+    """Open the dashboard: local and read-only by default; `--public --snapshot` is the hosted mode."""
     settings = _settings(ctx)
     try:
         import uvicorn
@@ -442,13 +455,63 @@ def serve_command(
     except ImportError:
         typer.echo("The dashboard needs the web extra; install with: uv sync --extra web")
         raise typer.Exit(EXIT_REFUSED) from None
-    dashboard = settings.dashboard.model_copy(update={"port": port or settings.dashboard.port})
+    if snapshot is not None:
+        settings = _snapshot_settings(settings, snapshot)
+    try:
+        dashboard = _dashboard_settings(settings, port, public, allowed_host)
+    except ValidationError as error:
+        typer.echo(f"cannot serve publicly: {_config_problem(error)}")
+        raise typer.Exit(EXIT_REFUSED) from None
     settings = settings.model_copy(update={"dashboard": dashboard})
-    typer.echo(f"Review Pulse dashboard: http://{dashboard.host}:{dashboard.port}  (Ctrl+C to stop)")
+    shown = dashboard.public_hosts[0] if dashboard.public_hosts else f"{dashboard.host}:{dashboard.port}"
+    typer.echo(f"Review Pulse dashboard: http://{shown}  (Ctrl+C to stop)")
     # No access log and quiet server logs: query strings and review text never reach a log line (E-WEB-3).
     uvicorn.run(
         create_app(settings), host=dashboard.host, port=dashboard.port, access_log=False, log_level="warning"
     )
+
+
+def _snapshot_settings(settings: Settings, snapshot: Path) -> Settings:
+    """Point the paths at an unpacked snapshot: its database in a temp folder, its run artifacts in place."""
+    from pulse.web.snapshot import unpack_snapshot
+
+    database = unpack_snapshot(snapshot, Path(tempfile.mkdtemp(prefix="pulse-snapshot-")))
+    paths = settings.paths.model_copy(update={"db": database, "runs": Path(snapshot) / "runs"})
+    return settings.model_copy(update={"paths": paths})
+
+
+def _dashboard_settings(
+    settings: Settings, port: int | None, public: bool, hosts: list[str]
+) -> DashboardSettings:
+    base = settings.dashboard.model_dump()
+    if not public:
+        return DashboardSettings.model_validate(base | {"port": port or settings.dashboard.port})
+    render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+    public_hosts = list(hosts) or ([render_host] if render_host else [])
+    chosen_port = port or int(os.environ.get("PORT") or settings.dashboard.port)
+    return DashboardSettings.model_validate(
+        base | {"host": "0.0.0.0", "port": chosen_port, "read_only": True, "public_hosts": public_hosts}
+    )
+
+
+@app.command("snapshot")
+def snapshot_command(
+    ctx: typer.Context,
+    out: Path = typer.Option(Path("deploy/snapshot"), "--out", help="Where to write the snapshot."),
+) -> None:
+    """Export the dashboard snapshot for the hosted dashboard (deployment.md); commit and push it."""
+    from pulse.web.snapshot import export_snapshot
+
+    settings = _settings(ctx)
+    if not Path(settings.paths.db).is_file():
+        typer.echo("no database yet; run pulse ingest first")
+        raise typer.Exit(EXIT_REFUSED)
+    report = export_snapshot(settings, out)
+    typer.echo(
+        f"snapshot {out}: {report.reviews} reviews, {report.classifications} labels, "
+        f"{len(report.runs)} pulse run(s), {report.size_bytes // 1024} KB"
+    )
+    typer.echo(f"publish it: git add {out} && git commit -m 'data: refresh dashboard snapshot' && git push")
 
 
 @app.command("doctor")

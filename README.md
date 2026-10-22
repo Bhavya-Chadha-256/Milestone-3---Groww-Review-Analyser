@@ -73,6 +73,18 @@ uv run pulse serve                             # then open http://127.0.0.1:8787
 - It listens on 127.0.0.1 only, opens the database read-only, shows only scrubbed review text and writes no access log. Every change goes through the normal `pulse run` command, so its lock and validation gates still apply.
 - The page is the Google Stitch design in `web/` (Tailwind and Chart.js from pinned CDN versions), so the browser needs internet access for its styles.
 
+### Hosted on Render (read-only)
+
+A read-only copy can run on Render's free tier from a data snapshot committed in `deploy/snapshot/`; see **[deployment.md](deployment.md)**. No environment variables or secrets are needed on Render. After new labels or a new pulse arrive on the laptop:
+
+```bash
+uv run pulse snapshot && git add deploy/snapshot && git commit -m "data: refresh dashboard snapshot" && git push
+```
+
+### Is anything scheduled?
+
+Not yet. Nothing fetches new reviews or resumes the backfill automatically: run the commands by hand (see "Weekly run"), or wait for Phase 6, Task 6.4, which adds a weekly launchd job on the Mac. That job (like any laptop schedule) runs only while the Mac is on and awake; a run missed during sleep starts at the next wake. Render only serves the dashboard and never runs the pipeline.
+
 ## Where things live
 
 | Path | In git? | What it is |

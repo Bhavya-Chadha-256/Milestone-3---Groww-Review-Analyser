@@ -20,6 +20,9 @@ from pulse.web.state import DashboardState, InvalidRequest, NotReady, allowed_ho
 router = APIRouter(prefix="/api")
 DELIVERY_ACTIONS = frozenset({"publish", "draft"})
 NO_DRAFT_TOOL = "Your MCP server has no Gmail draft tool"
+READ_ONLY = (
+    "This is the read-only hosted dashboard: pulses are generated and published from the maintainer's laptop"
+)
 
 
 def dashboard(request: Request) -> DashboardState:
@@ -42,6 +45,8 @@ def pulse_route(request: Request) -> Any:
 @router.post("/jobs")
 async def start_job(request: Request) -> JSONResponse:
     state = dashboard(request)
+    if state.settings.dashboard.read_only:
+        return JSONResponse({"error": READ_ONLY}, status_code=403)
     if not _from_dashboard(request, state):
         return JSONResponse({"error": "requests must come from the dashboard page"}, status_code=403)
     action, week = await _job_body(request)
@@ -81,7 +86,14 @@ def budget_route(request: Request) -> dict[str, Any]:
 
 @router.get("/delivery-ready")
 def delivery_ready_route(request: Request) -> dict[str, Any]:
-    found = dashboard(request).readiness()
+    state = dashboard(request)
+    if state.settings.dashboard.read_only:  # never contacts the MCP server
+        return {
+            "ready": False,
+            "problems": [{"name": "read_only", "detail": READ_ONLY}],
+            "draft_supported": False,
+        }
+    found = state.readiness()
     return {
         "ready": not found.problems,
         "problems": [{"name": name, "detail": detail} for name, detail in found.problems],

@@ -107,7 +107,12 @@ function filterChanged() {
 
 async function getJson(path, params) {
   const url = params && params.toString() ? `${path}?${params}` : path;
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  let response;
+  try {
+    response = await fetch(url, { headers: { Accept: "application/json" } });
+  } catch (error) {
+    return { status: 0, body: null }; // offline, or a hosted server still waking up
+  }
   let body = null;
   try {
     body = await response.json();
@@ -357,13 +362,30 @@ async function loadMeta() {
   const { status, body } = await getJson(API.meta, params);
   meta = status === 200 && body && body.ready ? body : null;
   byId("notReadyState").hidden = Boolean(meta);
+  const unreachable = status !== 200;
+  setText("notReadyTitle", unreachable ? "Can't reach the dashboard server" : "No review data yet");
+  setText(
+    "notReadyText",
+    unreachable
+      ? "It may still be waking up (a free hosted server sleeps when idle and takes about a minute). Try again shortly."
+      : "No reviews have been loaded yet. They appear here after the first data update.",
+  );
+  byId("retryBtn").hidden = !unreachable;
   byId("tab-analyse").hidden = !meta || state.tab !== "analyse";
   byId("tab-pulse").hidden = !meta || state.tab !== "pulse";
   if (!meta) {
     setText("syncedText", "No data yet");
     return false;
   }
-  setText("syncedText", `Reviews to ${shortDate(meta.window.end)}`);
+  const updated = meta.data_updated_at ? ` · updated ${shortDate(meta.data_updated_at.slice(0, 10))}` : "";
+  setText("syncedText", `Reviews to ${shortDate(meta.window.end)}${updated}`);
+  for (const id of ["generateBtn", "noPulseGenerateBtn"]) byId(id).hidden = meta.read_only;
+  const unlabelled = meta.eligible - meta.classified;
+  byId("labelNotice").hidden = unlabelled <= 0;
+  setText(
+    "labelNoticeText",
+    `${count(meta.classified)} of ${count(meta.eligible)} reviews in this window have themes so far. Theme figures cover only those and fill in as new labels arrive.`,
+  );
   setText("showingTotal", count(meta.total));
   setText("showingCount", count(meta.eligible)); // the default view; loadAnalyse refines it per filter
   byId("exportBtn").hidden = !meta.allow_export;
@@ -488,7 +510,7 @@ function renderThemes(themes) {
     });
     return row;
   });
-  byId("themeRows").replaceChildren(...rows);
+  byId("themeRows").replaceChildren(...(rows.length ? rows : [emptyNote("Themes appear here once reviews have been labelled.")]));
 }
 
 function renderTrend() {
@@ -616,7 +638,7 @@ async function loadReviews() {
   const { status, body } = await getJson(API.reviews, params);
   if (status !== 200) return;
   const rows = body.items.map(reviewRow);
-  byId("reviewRows").replaceChildren(...rows);
+  byId("reviewRows").replaceChildren(...(rows.length ? rows : [emptyNote("No reviews match these filters.")]));
   setText("reviewsCount", `${count(body.total)} entries matching active criteria`);
   const size = meta.page_size;
   const pages = Math.max(1, Math.ceil(body.total / size));
@@ -626,6 +648,13 @@ async function loadReviews() {
   renderPager(body.page, pages);
   byId("sortSelect").value = state.sort;
   byId("exportBtn").setAttribute("href", `${API.csv}?${filterParams({ sort: state.sort })}`);
+}
+
+function emptyNote(text) {
+  const note = document.createElement("p");
+  note.className = "py-6 text-center font-body-md text-body-md text-on-surface-variant";
+  note.textContent = text;
+  return note;
 }
 
 function ratingBadge(rating) {
@@ -768,7 +797,9 @@ async function loadPulse() {
   setText("noPulseGenerateLabel", `Generate pulse for ${week.replace("-W", " · Week ")}`);
   setText(
     "noPulseText",
-    pulseView && !hasPulse
+    meta.read_only
+      ? "This week's pulse isn't available yet. It appears here after the next data update."
+      : pulseView && !hasPulse
       ? `The latest run for this week stopped at ${pulseView.status || "an early stage"}; generate the pulse to finish it.`
       : "Pulse synthesis aggregates Play Store and App Store telemetry for this period, sanitizes PII, and extracts key squad drivers.",
   );
@@ -778,7 +809,7 @@ async function loadPulse() {
 
 function renderBudget(budget) {
   const banner = byId("budgetBanner");
-  banner.hidden = !budget || !budget.exhausted;
+  banner.hidden = !budget || !budget.exhausted || meta.read_only;
   if (!budget) return;
   const model = budget.models[0];
   setText("budgetText", `Used ${count(model.tokens_used)} of ${count(model.token_limit)} tokens today. Generation resets after ${budget.resets_at_local}.`);
@@ -874,15 +905,15 @@ function renderDelivery() {
   byId("openDraftLink").hidden = !delivery.draft_id;
   setText("deliveryText", delivery.doc_url ? `Published to Google Docs (${pulseView.status.replaceAll("_", " ").toLowerCase()})` : "Not published to Google Docs yet");
 
-  const problems = readiness && readiness.problems.length ? readiness.problems.map((item) => `${item.name}: ${item.detail}`).join("; ") : "";
+  const problems = readiness && readiness.problems.length ? readiness.problems.map((item) => (item.name === "read_only" ? item.detail : `${item.name}: ${item.detail}`)).join("; ") : "";
   const validated = Boolean(pulseView && pulseView.has_pulse && pulseView.validated);
   const publish = byId("publishDocBtn");
   publish.disabled = Boolean(problems) || !validated;
-  publish.title = problems ? `Delivery isn't set up — ${problems}` : validated ? "" : "Generate a pulse that passes validation first";
+  publish.title = meta.read_only ? problems : problems ? `Delivery isn't set up — ${problems}` : validated ? "" : "Generate a pulse that passes validation first";
   const draft = byId("gmailDraftBtn");
   const noTool = readiness && !readiness.draft_supported;
   draft.disabled = Boolean(problems) || noTool || !delivery.doc_url;
-  draft.title = noTool ? NO_DRAFT_TOOL : problems ? `Delivery isn't set up — ${problems}` : delivery.doc_url ? "" : "Publish the Doc first";
+  draft.title = meta.read_only ? problems : noTool ? NO_DRAFT_TOOL : problems ? `Delivery isn't set up — ${problems}` : delivery.doc_url ? "" : "Publish the Doc first";
 }
 
 // ---------------------------------------------------------------- jobs
@@ -1040,6 +1071,7 @@ function bindEvents() {
   });
   byId("clearAll").addEventListener("click", clearFilters);
   byId("noResultsClear").addEventListener("click", clearFilters);
+  byId("retryBtn").addEventListener("click", init);
   byId("closeBanner").addEventListener("click", () => { byId("piiBanner").hidden = true; });
   byId("sortSelect").addEventListener("change", (event) => {
     state.sort = event.target.value;
@@ -1086,8 +1118,11 @@ function bindEvents() {
   });
 }
 
+let bound = false;
+
 async function init() {
-  bindEvents();
+  if (!bound) bindEvents();
+  bound = true;
   const ready = await loadMeta();
   renderFilterBar();
   showTab(state.tab);

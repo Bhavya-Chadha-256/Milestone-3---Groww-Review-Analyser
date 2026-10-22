@@ -27,7 +27,7 @@ Update this table whenever a task or phase changes state.
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
 | 5. Delivery | 🚧 Code complete and reviewed (2026-10-22): Tasks 5.1–5.3, the review fix pass, and Task 5.4 (the user's append-only hosted server; 461 tests). Checkpoint waits on the user: `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`, then `pulse doctor` and a live run. | `phase-5-deliver` (local) | Server: the user's gmail-gdocs-mcp on Render. **No Gmail draft** (server has no draft tool; user accepted). Stop after Phase 5; don't start Phase 6 without the user. |
 | 6 | Not started | — | — |
-| 7. Dashboard | 🚧 Code complete (2026-10-22): Tasks 7.1–7.4 built test-first (500 tests) and run on the real data with `uv run pulse serve`. Not yet reviewed. Checkpoint (manual, in the browser) pending; Publish/Draft wait on the Phase 5 checkpoint. | `phase-7-dashboard` (local) | From `phase-5-deliver`. Design: the user's Stitch export, unchanged. |
+| 7. Dashboard | 🚧 Code complete (2026-10-22): Tasks 7.1–7.5 built test-first (507 tests); runs locally (`pulse serve`) and is ready to host read-only on Render (`deployment.md`). Not yet reviewed. Browser checkpoint pending. | `phase-7-dashboard` (pushed) | From `phase-5-deliver`. Design: the user's Stitch export, unchanged. Snapshot in `deploy/snapshot/` (public, user's choice). |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
 
@@ -36,7 +36,9 @@ Update this table whenever a task or phase changes state.
 2. **Nothing is scheduled: the new chat owns the backfill.** The original chat's jobs (05:37 and 17:47 IST) were cancelled on 2026-10-22 at hand-over, so two chats never run or commit at once. Schedule them again in the new chat (see "Recreating the daily schedule" below) or run the command by hand once per UTC day. Check progress with `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`, then either run the resume command once per UTC day by hand or schedule it again (CronCreate, laptop awake): `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Stop when the status is `AGGREGATED`.
 3. **The Phase 5 review, fix pass and Task 5.4 are done** (2026-10-22). Next: the Phase 5 checkpoint, once the user has put `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`.
 4. Phase 6 has not started; don't start it without the user.
-5. **Phase 7 (Dashboard) is code complete** (2026-10-22) on `phase-7-dashboard`: `uv sync --extra web`, then `uv run pulse serve` and open http://127.0.0.1:8787. Next: the Phase 7 review (one fresh-context review of `phase-5-deliver..phase-7-dashboard`), then the browser checkpoint. Phase 6 has not started.
+5. **Phase 7 (Dashboard) is code complete** (2026-10-22) on `phase-7-dashboard`: `uv sync --extra web`, then `uv run pulse serve` and open http://127.0.0.1:8787. **Hosting:** read-only on Render from the committed `deploy/snapshot/` (`deployment.md`; no env vars); refresh with `pulse snapshot`, commit, push. The user deploys it via New → Blueprint. Next: the Phase 7 review (one fresh-context review of `phase-5-deliver..phase-7-dashboard`), then the browser checkpoint. Phase 6 has not started.
+6. **Nothing is scheduled.** No weekly fetch/run job exists yet (Phase 6, Task 6.4: a launchd job on the Mac, which needs the Mac on and awake). The backfill resumes only when someone runs `uv run pulse run --week 2026-W42 --from classify --until aggregate` after 00:00 UTC, then `pulse snapshot` + push to refresh Render.
+7. **All branches pushed** to GitHub on 2026-10-22 (`phase-3-themes`, `phase-4-pulse`, `phase-5-deliver`, `phase-7-dashboard`; never `archive/full-history`). None merged into `main`.
 
 
 **Where things stand**
@@ -3125,6 +3127,23 @@ Expected: all passed; ruff clean.
 > - **CSP:** besides `'self'`, cdnjs and the Tailwind CDN for scripts, it allows Google Fonts (`fonts.googleapis.com` styles, `fonts.gstatic.com` fonts) and `'unsafe-inline'` styles, which the Tailwind CDN needs. The Stitch Tailwind config moved to `web/tailwind.config.js` (no inline scripts). Pins: Tailwind 3.4.17, Chart.js 4.4.1.
 > - **Chart:** Chart.js with animation off (a redraw never shows a half-drawn frame).
 > - **Run on the real data (2026-10-22):** 12,978 reviews in the window, 2,177 eligible, 5 themes; console clean apart from the favicon 404 and Tailwind's CDN notice. Weekly pulse shows "Needs attention" for W42 (the paused backfill run) with Generate offered.
+
+### Task 7.5: Hosted read-only dashboard on Render (added 2026-10-22)
+
+The user asked to deploy the dashboard on Render, with data updating as the backfill's tokens allow. **User decisions:** the data snapshot lives in this public repo; the dashboard is open to anyone with the link.
+
+**Files:** `src/pulse/web/snapshot.py` (new), `src/pulse/web/{app,state,actions,pulse_view}.py`, `src/pulse/store.py` (`latest_posted_at`, `run_ids_for_week`, `get_run`), `src/pulse/config.py` (`DashboardSettings.read_only`, `public_hosts`), `src/pulse/cli.py` (`pulse snapshot`; `serve --public --snapshot --allowed-host`), `web/{index.html,app.js}` (partial-data states), `render.yaml`, `deployment.md`, `deploy/snapshot/`, `tests/test_web_deploy.py`.
+
+- [x] **Tests first** (RED, then GREEN; suite 507): `test_public_host_requires_read_only_and_named_hosts`, `test_public_host_header_allowed_and_others_refused`, `test_read_only_refuses_jobs_and_never_checks_delivery`, `test_default_week_follows_the_latest_data`, `test_pulse_view_prefers_the_latest_run_with_a_pulse`, `test_snapshot_round_trip`, `test_serve_public_binds_all_interfaces_read_only`.
+- [x] **Commit:** `feat: host the dashboard read-only on Render from a committed snapshot`
+
+> **As built (2026-10-22):**
+> - **Snapshot:** a SQLite backup, `VACUUM`ed, gzip level 9 with `mtime=0` (an unchanged database gives identical bytes, so no git churn); about 1.2 MB with 12,978 reviews. Runs: per week, the newest run whose folder has a pulse, copying only the artifacts the view reads plus `report.json`. `data/raw/` is never included.
+> - **Hosted mode:** `--public` validates `DashboardSettings(host="0.0.0.0", read_only=True, public_hosts=[$RENDER_EXTERNAL_HOSTNAME or --allowed-host], port=$PORT)`. A public host without `read_only` and named hosts fails to load. Read-only: `POST /api/jobs` → 403, `/api/delivery-ready` → not ready (`read_only`) without contacting the MCP server. `/api/meta` adds `read_only`, `classified` and `data_updated_at`.
+> - **Default week:** when no date is pinned, `min(today, day after the newest review)`, so a lagging snapshot opens on the latest week it covers.
+> - **Pulse view:** the newest run with a pulse, plus `latest_status`; a later early-stopped backfill run no longer hides a validated pulse (this also helps locally).
+> - **Page states:** server unreachable or waking (with **Try again**), no data, labelling in progress (amber notice with the labelled share), no themes, no reviews for the filters, no pulse for the week (no Generate in read-only mode), and the freshness line in the header.
+> - **Render:** `render.yaml` Blueprint (free plan, Python 3.12.8, `pip install -e ".[web]"`, health check `/healthz`, auto-deploy on push, branch `phase-7-dashboard` until the merges). **No environment variables or secrets** to enter. A local smoke test of `--public` answered on its public name and refused jobs.
 
 ### Phase 7 checkpoint (manual, in the browser)
 
