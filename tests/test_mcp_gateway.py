@@ -1,8 +1,6 @@
-from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-import stub_mcp
 from mcp import Client
 from stub_mcp import STATE
 
@@ -17,30 +15,7 @@ from pulse.deliver.mcp_client import (
     load_mcp_config,
 )
 
-STUB_CONFIG = Path(__file__).parent / "fixtures" / "mcp_stub.yaml"
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config" / "mcp.yaml"
-
-
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
-@pytest.fixture
-def stub_config() -> McpConfig:
-    STATE.reset()
-    return load_mcp_config(STUB_CONFIG)
-
-
-@pytest.fixture
-async def client(stub_config: McpConfig) -> AsyncIterator[Client]:
-    async with Client(stub_mcp.server) as connected:
-        yield connected
-
-
-@pytest.fixture
-def gateway(client: Client, stub_config: McpConfig) -> WorkspaceGateway:
-    return WorkspaceGateway(client, stub_config)
 
 
 def with_operation(config: McpConfig, name: str, spec: OperationSpec, *, allow: bool = True) -> McpConfig:

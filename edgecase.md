@@ -184,7 +184,7 @@ The first draft of this catalog found 12 gaps. Each now has an owning task and a
 | DEL-6 | Doc read-back doesn't match | One retry, then `DELIVERY_UNVERIFIED`; the draft is still created | M | ✅ 📏 | 5.2 `test_read_back_mismatch_retries_once_then_unverified`, M-DEL-1 |
 | DEL-7 | Re-run after the draft already exists | Skipped unless `--force` | M | ✅ | 5.2 `test_draft_is_idempotent_unless_forced` |
 | DEL-8 | Draft fails after the Doc succeeded | `PUBLISHED_DOC_ONLY`; `--from draft` resumes with no second Doc | M | ✅ | 5.3 `test_resume_from_draft_after_draft_failure` |
-| DEL-9 | Crash between a create call returning and the ledger saving | A re-run may duplicate the Doc. Kept small by saving the ledger right after each create. | L | 🟦 | 5.2 ordering |
+| DEL-9 | Crash between a create call returning and the ledger saving | A re-run may duplicate the Doc. Kept small by saving the ledger right after each create. | L | 🟦 | 5.2 ordering, `test_ledger_is_saved_right_after_create` |
 | DEL-10 | `recipient` or `drive_folder_id` still a placeholder | `pulse doctor` fails | M | ✅ | 5.3 `test_doctor_fails_on_placeholder_config` |
 | DEL-11 | Concurrent runs for the same week | The second run exits with `run_in_progress` (exit code 3) | M | ✅ | 2.4 `test_concurrent_run_same_week_refused`, `test_run_in_progress_exit_code` |
 | DEL-12 | Server's draft tool has no HTML argument | Optional argument omitted | L | ✅ | 5.1 `test_unmapped_optional_field_is_not_sent` |

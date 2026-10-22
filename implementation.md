@@ -2344,7 +2344,7 @@ Expected: all passed.
 
 **`create_draft`:** if the ledger already has a `draft_id` and `force` is false, return it with no tool call (DEL-7). Otherwise call `create_draft`, then save.
 
-- [ ] **Step 1: Write the failing tests** (`@pytest.mark.anyio`)
+- [x] **Step 1: Write the failing tests** (`@pytest.mark.anyio`)
 
 ```python
 async def test_first_publish_creates_then_rerun_updates_same_doc(gateway, store): ...
@@ -2358,21 +2358,28 @@ async def test_update_on_missing_doc_recreates(gateway, store):          # DEL-5
 async def test_draft_is_idempotent_unless_forced(gateway, store): ...   # DEL-7
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_delivery.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `docs.py` and `gmail.py`**
+- [x] **Step 3: Implement `docs.py` and `gmail.py`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_delivery.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: publish weekly Doc and Gmail draft idempotently via MCP"`
+
+> **As built (2026-10-22):**
+> - **`create_draft(..., recipient, ...)`** replaces the plan's `to` (two-character naming rule).
+> - **Read-back:** the Doc counts as verified when every `must_contain` string appears in the read-back after `normalize_quote_text`; the read-back text includes every string found inside JSON parts of the result, so JSON escapes (`\u201c`, `\"`) don't cause a false mismatch.
+> - **Update failure on an existing Doc:** if `read_doc` still finds the Doc, the original `ToolCallFailed` is re-raised (e.g. expired auth, DEL-4); only a Doc that can't be read is recreated (DEL-5).
+> - **Fixtures:** the stub gateway fixtures (`anyio_backend`, `stub_config`, `client`, `gateway`) moved into `tests/conftest.py`; the stub numbers created Docs with a running counter, so an ID is never reused.
+> - **Extra tests:** `test_update_failure_on_existing_doc_is_raised`, `test_ledger_is_saved_right_after_create` (DEL-9).
 
 ---
 

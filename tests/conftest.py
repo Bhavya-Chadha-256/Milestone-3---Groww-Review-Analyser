@@ -1,14 +1,19 @@
 """Shared pytest fixtures for every task (implementation.md Task 0.2)."""
 
 import shutil
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+import stub_mcp
+from mcp import Client
 
 from pulse.config import Settings, load_settings
+from pulse.deliver.mcp_client import McpConfig, WorkspaceGateway, load_mcp_config
 from pulse.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+STUB_CONFIG = REPO_ROOT / "tests" / "fixtures" / "mcp_stub.yaml"
 
 
 @pytest.fixture
@@ -49,3 +54,28 @@ def tmp_settings(settings: Settings, repo_root: Path, tmp_path: Path) -> Setting
 @pytest.fixture
 def tmp_store(tmp_settings: Settings) -> Store:
     return Store(Path(tmp_settings.paths.db))
+
+
+# MCP stub gateway (Phase 5): an in-process stand-in for the Workspace MCP server.
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.fixture
+def stub_config() -> McpConfig:
+    stub_mcp.STATE.reset()
+    return load_mcp_config(STUB_CONFIG)
+
+
+@pytest.fixture
+async def client(stub_config: McpConfig) -> AsyncIterator[Client]:
+    async with Client(stub_mcp.server) as connected:
+        yield connected
+
+
+@pytest.fixture
+def gateway(client: Client, stub_config: McpConfig) -> WorkspaceGateway:
+    return WorkspaceGateway(client, stub_config)

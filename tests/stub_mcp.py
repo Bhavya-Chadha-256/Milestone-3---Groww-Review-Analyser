@@ -15,6 +15,7 @@ class StubState:
     fail_next: set[str] = field(default_factory=set)
     stale_reads: bool = False  # get_document returns "" instead of the content
     omit_ids: bool = False  # create tools return no IDs (DEL-13)
+    created: int = 0  # IDs are never reused, even after `docs` is cleared
 
     def reset(self) -> None:
         self.__init__()
@@ -34,7 +35,8 @@ def _record(tool: str, **args: Any) -> None:
 @server.tool()
 def create_document(title: str, content: str, folder_id: str) -> dict[str, str]:
     _record("create_document", title=title, content=content, folder_id=folder_id)
-    doc_id = f"doc{len(STATE.docs) + 1}"
+    STATE.created += 1
+    doc_id = f"doc{STATE.created}"
     STATE.docs[doc_id] = content
     if STATE.omit_ids:
         return {"status": "created"}
