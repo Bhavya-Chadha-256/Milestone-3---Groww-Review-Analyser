@@ -1947,7 +1947,7 @@ Expected: all passed.
   - `reviews_json(evidence[theme_id])` for each theme
   - when `feedback` is set: `Fix these problems from your previous draft:\n- ...`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_compose_prompt_has_rules_order_and_data_rule(): ...
@@ -1955,23 +1955,28 @@ def test_feedback_is_appended(): ...
 def test_evidence_sample_is_seeded_and_theme_scoped(): ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_compose.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `compose.py` and `compose.md`**
+- [x] **Step 3: Implement `compose.py` and `compose.md`**
 
 The prompt file starts with `<!-- prompt_version: compose-v1 -->`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_compose.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: compose pulse summaries and action ideas with validator feedback"`
+
+> **As built (2026-10-22):**
+> - **User prompt:** the window range, the top themes as JSON (`theme_id`, `name`, `definition`, `reviews`, `low_rating_share`), the quotes as JSON, then one `<reviews>` evidence block per theme; feedback is appended last.
+> - **`evidence_sample`:** a seeded `random.sample` over the theme's members sorted by `review_id`, so it is reproducible; fewer than `k` members returns all of them.
+> - **Prompt extras:** besides the five exact rules, `compose.md` asks for only input `theme_id`s, no speculation beyond the reviews, and no people's names.
 
 ---
 
