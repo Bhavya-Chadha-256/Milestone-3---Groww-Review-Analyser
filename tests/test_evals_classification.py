@@ -180,7 +180,7 @@ def test_load_gold_refuses_low_kappa_or_mismatched_taxonomy(tmp_path: Path) -> N
 
 
 def test_runner_separates_errors_and_unexpected_model_rows(tmp_path: Path) -> None:
-    run = EvalRun("classification", tmp_path, today="2026-10-22")
+    run = EvalRun("classification", tmp_path, started=datetime(2026, 10, 22, 9, tzinfo=UTC))
     run.case(
         "a",
         {"gold": "support", "pred": "support"},
@@ -203,7 +203,7 @@ def test_runner_separates_errors_and_unexpected_model_rows(tmp_path: Path) -> No
 
 
 def finished_run(root: Path, name: str, preds: dict[str, str], gold: dict[str, str]) -> Path:
-    run = EvalRun("classification", root / name, today="2026-10-22")
+    run = EvalRun("classification", root / name, started=datetime(2026, 10, 22, 9, tzinfo=UTC))
     for key, label in gold.items():
         run.case(key, {"gold": label, "pred": preds[key]}, served_model="m", primary_model="m")
     run.metric("E-CLS-1", macro_f1(gold, preds, CLASSES)[0], target=0.8, gate="blocking")
@@ -298,3 +298,17 @@ def test_infrastructure_failures_are_not_scored(
     errors = [json.loads(line) for line in (out / "errors.jsonl").read_text().splitlines()]
     assert summary["metrics"]["E-CLS-1"]["value"] == 1.0 and summary["metrics"]["E-CLS-5"]["value"] == 0.2
     assert len(errors) == 6 and {error["failure_class"] for error in errors} == {"truncated"}
+
+
+def test_same_day_reruns_keep_separate_results(tmp_path: Path) -> None:  # evaluation §11, review I5
+    morning, evening = datetime(2026, 10, 22, 9, tzinfo=UTC), datetime(2026, 10, 22, 15, 30, tzinfo=UTC)
+    paths = [
+        EvalRun("classification", tmp_path, started=started).finish(UsageLedger(), Pricing())
+        for started in (morning, evening)
+    ]
+    assert [path.name for path in paths] == [
+        "2026-10-22T090000-classification",
+        "2026-10-22T153000-classification",
+    ]
+    with pytest.raises(FileExistsError):
+        EvalRun("classification", tmp_path, started=morning).finish(UsageLedger(), Pricing())

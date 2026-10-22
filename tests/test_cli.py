@@ -155,7 +155,7 @@ def test_eval_compare_prints_verdicts(tmp_settings: Settings, tmp_path: Path) ->
 
     paths = []
     for name in ("a", "b"):
-        run = EvalRun("classification", tmp_path / name, today="2026-10-22")
+        run = EvalRun("classification", tmp_path / name, started=datetime(2026, 10, 22, 9, tzinfo=UTC))
         for index in range(20):
             run.case(f"r{index}", {"gold": "x", "pred": "x"}, served_model="m", primary_model="m")
         run.metric("E-CLS-1", 1.0, target=0.8, gate="blocking")

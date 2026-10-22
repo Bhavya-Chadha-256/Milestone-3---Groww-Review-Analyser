@@ -23,9 +23,10 @@ class CompareRow:
 
 
 class EvalRun:
-    def __init__(self, suite: str, out_root: Path = RESULTS_ROOT, *, today: str | None = None) -> None:
+    def __init__(self, suite: str, out_root: Path = RESULTS_ROOT, *, started: datetime | None = None) -> None:
         self.suite = suite
-        self.out_dir = Path(out_root) / f"{today or datetime.now(UTC).date().isoformat()}-{suite}"
+        started_utc = (started or datetime.now(UTC)).astimezone(UTC)
+        self.out_dir = Path(out_root) / f"{started_utc:%Y-%m-%dT%H%M%S}-{suite}"  # a rerun never overwrites
         self.cases: list[dict[str, Any]] = []
         self.errors: list[dict[str, str]] = []
         self.metrics: dict[str, dict[str, Any]] = {}
@@ -63,7 +64,8 @@ class EvalRun:
         }
 
     def finish(self, usage: UsageLedger, pricing: Pricing, judge_usage: UsageLedger | None = None) -> Path:
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir.parent.mkdir(parents=True, exist_ok=True)
+        self.out_dir.mkdir()  # FileExistsError rather than overwrite a baseline (evaluation §11)
         summary = {
             "suite": self.suite,
             "git_sha": _git_sha(),
