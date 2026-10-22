@@ -8,10 +8,12 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from pulse.deliver.mcp_client import ToolCallFailed, ToolResult, WorkspaceGateway
+from pulse.deliver.mcp_client import NotFound, ToolCallFailed, ToolResult, WorkspaceGateway
 from pulse.llm.quotes import normalize_quote_text
 from pulse.models import Delivery
 from pulse.store import Store
+
+DOC_URL = "https://docs.google.com/document/d/{doc_id}/edit"  # when the server's result has no URL
 
 
 async def publish_doc(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hint on closing line)
@@ -47,7 +49,9 @@ async def _write(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
     except ToolCallFailed:
         if await _exists(gw, delivery.doc_id):
             raise  # the Doc is there, so the failure is real (e.g. expired auth, DEL-4)
-        recreated = await _create(gw, store, delivery, title=title, body=body, folder_id=folder_id)
+        # The old draft links to the deleted Doc, so forget it: the draft stage makes one with the new link.
+        orphaned = delivery.model_copy(update={"draft_id": None, "delivered_at": None})
+        recreated = await _create(gw, store, orphaned, title=title, body=body, folder_id=folder_id)
         return recreated, ["doc_recreated"]
     return delivery, []
 
@@ -56,17 +60,20 @@ async def _create(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
     gw: WorkspaceGateway, store: Store, delivery: Delivery, *, title: str, body: str, folder_id: str
 ) -> Delivery:
     result = await gw.call("create_doc", title=title, body=body, folder_id=folder_id)
+    url = result.url or DOC_URL.format(doc_id=result.resource_id)
     created = delivery.model_copy(
-        update={"doc_id": result.resource_id, "doc_url": result.url, "doc_verified": False}
+        update={"doc_id": result.resource_id, "doc_url": url, "doc_verified": False}
     )
     store.save_delivery(created)  # immediately, before anything else can fail (DEL-9)
     return created
 
 
 async def _exists(gw: WorkspaceGateway, doc_id: str) -> bool:
+    """False only when the server says the Doc is gone; any other read error is raised, so a transient
+    failure never creates a second Doc for the week."""
     try:
         await gw.call("read_doc", doc_id=doc_id)
-    except ToolCallFailed:
+    except NotFound:
         return False
     return True
 

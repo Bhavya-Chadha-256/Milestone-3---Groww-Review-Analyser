@@ -1,18 +1,29 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 from mcp import Client
 from stub_mcp import STATE
 
+from pulse.deliver import mcp_client
 from pulse.deliver.mcp_client import (
     FORBIDDEN_TOOL_RE,
     ForbiddenTool,
     McpConfig,
+    McpConfigError,
     MissingTool,
+    NotFound,
     OperationSpec,
+    ServerSpec,
     ToolCallFailed,
     WorkspaceGateway,
+    _server_target,
+    broken_gateway,
+    gateway_problem,
     load_mcp_config,
+    open_gateway,
+    run_with_gateway,
 )
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config" / "mcp.yaml"
@@ -97,3 +108,83 @@ def test_repo_config_loads_with_placeholder_tools() -> None:
     assert config.operations["create_doc"].requires_id and "html" in str(
         config.operations["create_draft"].args
     )
+
+
+@pytest.mark.anyio
+async def test_not_found_error_is_distinguished(gateway: WorkspaceGateway) -> None:  # DEL-5
+    with pytest.raises(NotFound, match="not found"):
+        await gateway.call("read_doc", doc_id="missing")
+    STATE.docs["doc9"] = "body"
+    STATE.fail_next = {"get_document"}
+    with pytest.raises(ToolCallFailed) as raised:
+        await gateway.call("read_doc", doc_id="doc9")
+    assert not isinstance(raised.value, NotFound)
+
+
+@pytest.mark.anyio
+async def test_unknown_template_field_is_a_config_error(client: Client, stub_config: McpConfig) -> None:
+    typo = OperationSpec(tool="get_document", args={"document_id": "{document}"})
+    gateway = WorkspaceGateway(client, with_operation(stub_config, "read_doc", typo, allow=False))
+    with pytest.raises(McpConfigError, match="document"):
+        await gateway.call("read_doc", doc_id="doc1")
+    assert STATE.calls == []
+
+
+def test_forbidden_regex_covers_ownership_and_replies() -> None:
+    names = ("transfer_drive_ownership", "move_file", "reply_to_message")
+    assert all(FORBIDDEN_TOOL_RE.search(name) for name in names)
+    assert not any(
+        FORBIDDEN_TOOL_RE.search(name) for name in ("create_doc", "get_doc_content", "draft_gmail")
+    )
+
+
+def test_server_passes_only_named_non_empty_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-secret")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "client-id")
+    monkeypatch.setenv("USER_GOOGLE_EMAIL", "")
+    spec = ServerSpec(
+        transport="stdio",
+        command=["uvx", "workspace-mcp"],
+        env=["GOOGLE_OAUTH_CLIENT_ID", "USER_GOOGLE_EMAIL"],
+    )
+    env = _server_target(spec).env
+    assert env["GOOGLE_OAUTH_CLIENT_ID"] == "client-id"
+    assert "GROQ_API_KEY" not in env and "USER_GOOGLE_EMAIL" not in env
+
+
+@pytest.mark.anyio
+async def test_client_gets_the_configured_timeout(
+    stub_config: McpConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    @asynccontextmanager
+    async def fake_client(target: object, **kwargs: object) -> AsyncIterator[object]:
+        seen.update(kwargs)
+        yield object()
+
+    monkeypatch.setattr(mcp_client, "Client", fake_client)
+    config = stub_config.model_copy(
+        update={"server": ServerSpec(transport="streamable_http", url="http://x")}
+    )
+    async with open_gateway(config):
+        pass
+    assert seen == {"read_timeout_seconds": 60}
+
+
+def test_connection_errors_become_tool_call_failed() -> None:  # DEL-8
+    @asynccontextmanager
+    async def unreachable() -> AsyncIterator[WorkspaceGateway]:
+        raise OSError("uvx: command not found")
+        yield  # pragma: no cover
+
+    async def operation(gateway: WorkspaceGateway) -> None:
+        return None
+
+    with pytest.raises(ToolCallFailed, match="OSError: uvx: command not found"):
+        run_with_gateway(unreachable, operation)
+
+
+def test_broken_config_is_reported_not_raised() -> None:  # DEL-1
+    problem = gateway_problem(broken_gateway("config/mcp.yaml: operations.create_doc.tool: missing"))
+    assert problem == "config/mcp.yaml: operations.create_doc.tool: missing"

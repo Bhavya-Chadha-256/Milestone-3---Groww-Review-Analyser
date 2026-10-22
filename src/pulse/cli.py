@@ -2,18 +2,21 @@
 
 import functools
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import typer
+import yaml
+from pydantic import ValidationError
 
 from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
-from pulse.deliver.mcp_client import gateway_problem, load_mcp_config, open_gateway
+from pulse.deliver.mcp_client import broken_gateway, gateway_problem, load_mcp_config, open_gateway
 from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
@@ -193,10 +196,26 @@ def build_dependencies(settings: Settings, *, need_llm: bool = False, need_gatew
         sources.append(FileImportSource(Path(paths.raw), Path(paths.mappings)))
     store = Store(Path(paths.db))
     llm = GroqLLM(settings.llm, store) if need_llm else None  # raises LLMError when the key is missing
-    factory = None
-    if need_gateway and MCP_CONFIG.is_file():
-        factory = functools.partial(open_gateway, load_mcp_config(MCP_CONFIG))
+    factory = _gateway_factory() if need_gateway else None
     return Deps(store=store, sources=sources, llm=llm, gateway_factory=factory)
+
+
+def _gateway_factory() -> Callable[[], Any]:
+    """Opens the configured MCP server; a missing or invalid config/mcp.yaml becomes a factory whose
+    pre-check and doctor report the reason before any LLM spend, instead of a traceback (DEL-1)."""
+    if not MCP_CONFIG.is_file():
+        return broken_gateway(f"{MCP_CONFIG} not found (run from the project folder)")
+    try:
+        return functools.partial(open_gateway, load_mcp_config(MCP_CONFIG))
+    except (ValidationError, yaml.YAMLError) as error:
+        return broken_gateway(f"{MCP_CONFIG} is invalid: {_config_problem(error)}")
+
+
+def _config_problem(error: ValidationError | yaml.YAMLError) -> str:
+    if isinstance(error, ValidationError):
+        first = error.errors()[0]
+        return f"{'.'.join(str(part) for part in first['loc'])}: {first['msg']}"
+    return str(error).splitlines()[0]
 
 
 @dataclass(frozen=True)

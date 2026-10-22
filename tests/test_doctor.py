@@ -59,3 +59,16 @@ def test_doctor_fails_without_groq_key(
     monkeypatch.setattr(cli, "MCP_CONFIG", tmp_path / "absent-mcp.yaml")
     result = invoke(tmp_settings, tmp_path, "doctor")
     assert result.exit_code == 1 and "groq_auth FAIL" in result.output and "GROQ_API_KEY" in result.output
+
+
+def test_doctor_reports_malformed_mcp_config(
+    tmp_settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # DEL-1
+    broken = tmp_path / "mcp.yaml"
+    broken.write_text("server: {transport: stdio}\noperations: {}\n")
+    monkeypatch.setattr(cli, "MCP_CONFIG", broken)
+    monkeypatch.setattr(cli, "ENV_FILE", tmp_path / "absent.env")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    result = invoke(tmp_settings, tmp_path, "doctor")
+    assert result.exit_code == 1 and "mcp_tools FAIL" in result.output and "allowlist" in result.output
+    assert "Traceback" not in result.output

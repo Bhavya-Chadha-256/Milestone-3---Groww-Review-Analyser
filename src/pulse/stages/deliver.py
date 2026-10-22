@@ -43,9 +43,12 @@ def publish_stage(context: RunContext) -> RunStatus:
 
 @register_stage("draft")
 def draft_stage(context: RunContext) -> RunStatus:
+    if not context.load_artifact("validation.json").get("passed"):
+        context.report.sections["Delivery"] = "No draft: the saved pulse did not pass validation."
+        return RunStatus.VALIDATION_FAILED
     delivery = context.store.get_delivery(context.window.iso_week)
-    if delivery is None or not delivery.doc_id:
-        context.report.sections["Delivery"] = "No Doc for this week yet; run --from publish first."
+    if delivery is None or not delivery.doc_id or not (context.run_dir / "delivery.json").is_file():
+        context.report.sections["Delivery"] = "This run hasn't published the Doc; run --from publish first."
         return RunStatus.FAILED
     if context.gateway_factory is None:
         return _no_gateway(context)

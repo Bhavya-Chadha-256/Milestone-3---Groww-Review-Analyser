@@ -1,9 +1,10 @@
 import pytest
+from mcp import Client
 from stub_mcp import STATE
 
 from pulse.deliver.docs import publish_doc
 from pulse.deliver.gmail import create_draft
-from pulse.deliver.mcp_client import ToolCallFailed, WorkspaceGateway
+from pulse.deliver.mcp_client import McpConfig, ToolCallFailed, WorkspaceGateway
 from pulse.store import Store
 
 WEEK = "2026-W42"
@@ -103,3 +104,36 @@ async def test_draft_is_idempotent_unless_forced(
     forced = await draft(gateway, tmp_store, force=True)
     assert forced.draft_id == "draft2" and tmp_store.get_delivery(WEEK).draft_id == "draft2"
     assert STATE.drafts["draft1"]["recipient"] == "me@example.com" and forced.delivered_at is not None
+
+
+@pytest.mark.anyio
+async def test_transient_read_failure_does_not_recreate(
+    gateway: WorkspaceGateway, tmp_store: Store
+) -> None:  # DEL-5
+    await publish(gateway, tmp_store, "A")
+    STATE.fail_next = {"update_document", "get_document"}
+    with pytest.raises(ToolCallFailed, match="invalid_grant"):
+        await publish(gateway, tmp_store, "B")
+    assert list(STATE.docs) == ["doc1"] and tmp_store.get_delivery(WEEK).doc_id == "doc1"
+
+
+@pytest.mark.anyio
+async def test_missing_url_falls_back_to_doc_link(
+    client: Client, stub_config: McpConfig, tmp_store: Store
+) -> None:
+    no_url = stub_config.operations["create_doc"].model_copy(update={"url_regex": None})
+    config = stub_config.model_copy(update={"operations": stub_config.operations | {"create_doc": no_url}})
+    delivery, _ = await publish(WorkspaceGateway(client, config), tmp_store, "A")
+    assert delivery.doc_url == "https://docs.google.com/document/d/doc1/edit"
+    assert tmp_store.get_delivery(WEEK).doc_url == delivery.doc_url
+
+
+@pytest.mark.anyio
+async def test_recreated_doc_clears_the_old_draft(
+    gateway: WorkspaceGateway, tmp_store: Store
+) -> None:  # DEL-5
+    await publish(gateway, tmp_store, "A")
+    await draft(gateway, tmp_store)
+    STATE.docs.clear()
+    recreated, _ = await publish(gateway, tmp_store, "B")
+    assert recreated.draft_id is None and tmp_store.get_delivery(WEEK).draft_id is None

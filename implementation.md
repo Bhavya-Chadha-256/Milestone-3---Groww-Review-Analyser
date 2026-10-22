@@ -25,7 +25,7 @@ Update this table whenever a task or phase changes state.
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
 | 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC, newest reviews first. **Not currently scheduled** (the original chat's jobs were cancelled at hand-over); the new chat reschedules or runs it by hand. **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
-| 5. Delivery | 🚧 Code complete (2026-10-22): Tasks 5.1–5.3 built and tested against the in-process stub server (437 tests). Not yet reviewed. Checkpoint (manual end-to-end) waits on the user's Google OAuth client, Drive folder and the real tool names in `config/mcp.yaml`. | `phase-5-deliver` (local) | Self-hosted workspace-mcp; drafts to bhavyachadha256@gmail.com. Work paused here at the user's request (2026-10-22). |
+| 5. Delivery | 🚧 Code complete and reviewed (2026-10-22): Tasks 5.1–5.3 plus the review fix pass ("with fixes": 5 Important + 6 minor fixed, 455 tests). Checkpoint (manual end-to-end) waits on the MCP server: the user's hosted server (Render, see Handoff) has no Doc create/read or Gmail draft tool, so a decision is open. | `phase-5-deliver` (local) | Drafts to bhavyachadha256@gmail.com. Stop after Phase 5; don't start Phase 6 without the user. |
 | 6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
@@ -33,7 +33,7 @@ Update this table whenever a task or phase changes state.
 **Start here (new session):**
 1. `git switch phase-5-deliver` (it contains Phases 3–5), `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`, `uv run pytest -q` (437 pass) and `uv run pulse eval --suite deterministic` (all pass).
 2. **Nothing is scheduled: the new chat owns the backfill.** The original chat's jobs (05:37 and 17:47 IST) were cancelled on 2026-10-22 at hand-over, so two chats never run or commit at once. Schedule them again in the new chat (see "Recreating the daily schedule" below) or run the command by hand once per UTC day. Check progress with `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`, then either run the resume command once per UTC day by hand or schedule it again (CronCreate, laptop awake): `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Stop when the status is `AGGREGATED`.
-3. **Next build step: the Phase 5 review** (one fresh-context review of `phase-4-pulse..phase-5-deliver`, then its fix pass). Work paused before it at the user's request.
+3. **The Phase 5 review and fix pass are done** (2026-10-22). Next: the MCP server decision (see "MCP server" under Where things stand), then the Phase 5 checkpoint.
 4. Phase 6 has not started; don't start it without the user.
 
 
@@ -46,11 +46,12 @@ Update this table whenever a task or phase changes state.
 - **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. It is **not scheduled** right now: the original chat's jobs (05:37 and 17:47 IST) were cancelled at hand-over; the new chat must schedule it (session-only jobs that need the laptop awake and VS Code open) or run it by hand. Groq's daily limit may be a rolling 24 hours rather than a midnight reset: if a run right after 00:00 UTC stops at once with a per-day limit, run it again later that day; the local guard prevents overspending.
 - **Groq:** key in `.env` (git-ignored), verified 2026-10-22: both models available.
 - **Delivery decisions (user, 2026-10-22):** self-hosted Google Workspace MCP server, chosen as `workspace-mcp` (`uvx workspace-mcp --single-user --tools docs gmail`); drafts addressed to `bhavyachadha256@gmail.com`. Tool names in `config/mcp.yaml` stay placeholders until the authorised server lists them.
+- **MCP server (user, 2026-10-22, later):** the user wants to connect their own hosted server, `https://milestone-3-mcp-testing.onrender.com/mcp` (repo `github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing`, `gmail-gdocs-mcp`, Streamable HTTP, needs `Authorization: Bearer <MCP_AUTH_TOKEN>`). It is reachable. Its tools are `google_auth_status`, `gdocs_append_text` (append to an existing Doc) and `gmail_send_email` (sends; `gmail.send` scope only). It has **no** Doc create, Doc read or Gmail draft tool, so it can't meet the brief's "Gmail draft" item or our create/update/read-back design as-is; the user has been asked how to proceed. `pulse` also needs bearer-header support for `streamable_http`.
 - **Evals:** `uv run pulse eval --suite deterministic` passes on the real data (free; run it on every commit).
 
 **Next steps (in order)**
 1. **Each day after 00:00 UTC:** resume the backfill until `AGGREGATED` (about 2 more days). Check `report.md` → Top themes: 3–5 themes, names ≤ 4 words, `actionable_unthemed_share` ≤ 0.20, no `broad_theme:` warning.
-2. **Phase 5 review:** one fresh-context review of `phase-5-deliver` (Tasks 5.1–5.3), then its fix pass. Work paused before this at the user's request.
+2. ~~Phase 5 review~~ done 2026-10-22 (see the review block above the Phase 5 checkpoint). **MCP server decision** (user): extend the hosted server with create/read/draft tools, or adapt `pulse` to it.
 3. **Phase 4 checkpoint:** once last week is labelled, `uv run pulse run --week 2026-W42 --dry-run` and read `pulse.md` in full (find each quote in the source, check for PII). On a day with no backfill, `uv run pulse eval --suite pulses`.
 4. **Google setup (user):** create a Google Cloud OAuth client (Desktop app) with the Docs, Drive and Gmail APIs enabled; put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` in `.env`; create a Drive folder and set `delivery.drive_folder_id`; authorise workspace-mcp once. Then fill `config/mcp.yaml` from the server's tool list and run `pulse doctor` (Phase 5 checkpoint).
 5. **Gold set (needs two human annotators):** `pulse eval --export-gold 200`, label, κ ≥ 0.70, then `pulse eval --suite classification`. Until then Phase 3's checkpoint stays open.
@@ -89,11 +90,14 @@ Update this table whenever a task or phase changes state.
   - The pulses suite loses finished datasets if an `LLMError` is raised partway.
   - The deterministic suite creates `data/pulse.db` on a fresh machine.
   - `strip(SURROUNDING_QUOTES)` also strips a closing quote or apostrophe that belongs to the review.
+- **Phase 5** (from the review; decide before Phase 6):
+  - `PUBLISHED_DOC_ONLY` and `DELIVERY_UNVERIFIED` exit 0, so the Phase 6 scheduled job would treat a missing draft as success.
+  - `--force` means both "allow over budget" and "re-create the draft"; once the cost guard exists, forcing past the budget also makes a second draft. Consider a separate `--redraft`.
 
 **Waiting on the user**
 - Two people to label the 200-review gold set (Phase 3 checkpoint); none available as of 2026-10-22.
 - The Google OAuth client, Drive folder and one-time workspace-mcp authorisation (Phase 5 checkpoint).
-- **Go-ahead for the Phase 5 review.** Work paused before it at the user's request ("stop after stage 5 is implemented").
+- **How to use the hosted MCP server** (see "MCP server" above), plus its `MCP_AUTH_TOKEN` in `.env`.
 - **Whether to push** the local commits on `phase-3-themes`, `phase-4-pulse` and `phase-5-deliver` to GitHub (asked 2026-10-22, not yet answered). Never push `archive/full-history`.
 
 **User decisions from the 2026-10-22 session** (also in the ledger)
@@ -2518,6 +2522,16 @@ Expected: all passed. This also meets E-DEL-1.
 > - **CLI:** `build_dependencies(..., need_gateway=...)` builds `functools.partial(open_gateway, load_mcp_config("config/mcp.yaml"))` for runs reaching `publish`; `pulse doctor` prints `config`, `delivery_config`, `groq_auth` and `mcp_tools` as `OK`/`FAIL` and exits 1 on any failure. Without a key, doctor still runs and reports `groq_auth FAIL`.
 > - **`.env.example`** lists `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` (empty), the names `config/mcp.yaml` passes to the server.
 > - **Extra tests:** `test_publish_refuses_a_pulse_that_failed_validation`, `test_doctor_fails_when_a_model_is_missing`, `test_env_example_lists_every_mcp_server_variable`.
+
+> **Phase 5 review (2026-10-22):** one fresh-context review of `phase-4-pulse..phase-5-deliver` said "with fixes" (no Critical). Each fix below went RED→GREEN; the suite ended at 455/455.
+> - **I-1 `draft` skipped the validation gate:** `--from draft` on a later run that failed validation drafted its unvalidated text. `draft` now refuses unless `validation.json` passed and this run's `delivery.json` exists (`test_draft_refuses_a_pulse_that_failed_validation`).
+> - **I-2 only `ToolCallFailed` was handled:** a server that won't start, crashes or times out crashed the run as `FAILED` with a traceback. `run_with_gateway` now wraps every error in `ToolCallFailed`, so the stages give the right status and `--from` line (`test_connection_errors_become_tool_call_failed`, `test_gateway_crash_during_draft_keeps_doc_only`).
+> - **I-3 no timeout:** `server.timeout_seconds` (default 60) is passed to `Client(read_timeout_seconds=...)` (`test_client_gets_the_configured_timeout`).
+> - **I-4 empty Doc link:** with no URL in the create result, the link is built from the Doc ID (`test_missing_url_falls_back_to_doc_link`).
+> - **I-5 any read error meant "deleted":** a transient failure could create a second Doc. `OperationSpec.not_found_regex` turns a matching error into `NotFound`; only that recreates (`test_not_found_error_is_distinguished`, `test_transient_read_failure_does_not_recreate`).
+> - **Minors fixed:** a recreated Doc drops the old `draft_id` (`test_recreated_doc_clears_the_old_draft`); the pre-check warning is tagged `publish` so a later resume clears it (`test_precheck_warning_is_cleared_by_a_later_resume`); a missing or invalid `config/mcp.yaml` becomes a `broken_gateway` that the pre-check and doctor report before LLM spend (`test_no_mcp_config_fails_before_llm_spend`, `test_doctor_reports_malformed_mcp_config`, `test_broken_config_is_reported_not_raised`); an unknown template field is a `McpConfigError` (`test_unknown_template_field_is_a_config_error`); empty `.env` values aren't passed to the server (`test_server_passes_only_named_non_empty_variables`); the forbidden-tool regex adds `transfer|ownership|move|reply` (`test_forbidden_regex_covers_ownership_and_replies`).
+> - **Coverage added:** `test_unreachable_server_fails_before_llm_spend`, `test_unverified_read_back_still_drafts`, `test_rerun_same_week_updates_doc_and_keeps_draft`.
+> - **Deferred to Phase 6 (in the Handoff):** exit code 0 on partial delivery; `--force`'s two meanings. **Not a defect:** E-DEL-1's 🔴 is its gate (blocking), not its state.
 
 ### Phase 5 checkpoint (manual end-to-end, E-DEL-2)
 

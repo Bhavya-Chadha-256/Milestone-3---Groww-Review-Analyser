@@ -218,12 +218,17 @@ def _run_stages(context: RunContext, stages: list[str]) -> RunStatus:
 
 def _mcp_ready(context: RunContext, stages: list[str]) -> bool:
     """A run that will publish checks the MCP server and its tools first, before any LLM spend (DEL-1)."""
-    if "publish" not in stages or context.gateway_factory is None:
+    if "publish" not in stages:
         return True
-    problem = gateway_problem(context.gateway_factory)
+    if context.gateway_factory is None:
+        problem = "no MCP server configured (config/mcp.yaml)"
+    else:
+        problem = gateway_problem(context.gateway_factory)
     if problem is None:
         return True
+    mark = len(context.report.warnings)
     context.report.warnings.append("mcp_precheck_failed")
+    context.report.tag_warnings("publish", since=mark)  # a later --from publish clears it (OPS-11)
     context.report.sections["Delivery"] = (
         f"MCP pre-check failed before any LLM call: {problem}. Run pulse doctor."
     )

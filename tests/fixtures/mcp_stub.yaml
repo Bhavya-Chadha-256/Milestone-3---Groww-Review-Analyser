@@ -17,6 +17,7 @@ operations:
   read_doc:
     tool: get_document
     args: {document_id: "{doc_id}"}
+    not_found_regex: 'not found'
   create_draft:
     tool: create_gmail_draft
     args: {recipient: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}

@@ -176,14 +176,14 @@ The first draft of this catalog found 12 gaps. Each now has an owning task and a
 
 | ID | Case | Expected behavior | Sev | Status | Owner / verified by |
 |---|---|---|---|---|---|
-| DEL-1 | MCP server unreachable, or a tool missing, at start | `FAILED` before any LLM call | M | ✅ | 5.3 `test_missing_mcp_tool_fails_before_llm_spend` |
+| DEL-1 | MCP server unreachable, a tool missing, or `config/mcp.yaml` missing or invalid, at start | `FAILED` before any LLM call; doctor reports it without a traceback | M | ✅ | 5.3 `test_missing_mcp_tool_fails_before_llm_spend`, `test_unreachable_server_fails_before_llm_spend`, `test_no_mcp_config_fails_before_llm_spend`, `test_doctor_reports_malformed_mcp_config`; 5.1 `test_broken_config_is_reported_not_raised` |
 | DEL-2 | A mapped tool is missing on the server | `MissingTool`, naming it | M | ✅ | 5.1 `test_missing_tool_is_reported` |
 | DEL-3 | Config maps an operation to a send, share or delete tool | `ForbiddenTool` before any call | H | ✅ | 5.1 `test_forbidden_tool_refused_before_any_call` |
 | DEL-4 | Auth expires mid-run | `ToolCallFailed`; the report names the re-authorise step and the `--from` command | M | ✅ | 5.3 `test_tool_failure_message_reaches_report` |
-| DEL-5 | The week's Doc was deleted by hand | Recreated; ledger updated; warning `doc_recreated` | M | ✅ | 5.2 `test_update_on_missing_doc_recreates` |
-| DEL-6 | Doc read-back doesn't match | One retry, then `DELIVERY_UNVERIFIED`; the draft is still created | M | ✅ 📏 | 5.2 `test_read_back_mismatch_retries_once_then_unverified`, M-DEL-1 |
-| DEL-7 | Re-run after the draft already exists | Skipped unless `--force` | M | ✅ | 5.2 `test_draft_is_idempotent_unless_forced` |
-| DEL-8 | Draft fails after the Doc succeeded | `PUBLISHED_DOC_ONLY`; `--from draft` resumes with no second Doc | M | ✅ | 5.3 `test_resume_from_draft_after_draft_failure` |
+| DEL-5 | The week's Doc was deleted by hand | Recreated only when the read error is a not-found; ledger updated (old `draft_id` dropped); warning `doc_recreated`. Any other read error is raised. | M | ✅ | 5.2 `test_update_on_missing_doc_recreates`, `test_transient_read_failure_does_not_recreate`, `test_recreated_doc_clears_the_old_draft`; 5.1 `test_not_found_error_is_distinguished` |
+| DEL-6 | Doc read-back doesn't match | One retry, then `DELIVERY_UNVERIFIED`; the draft is still created | M | ✅ 📏 | 5.2 `test_read_back_mismatch_retries_once_then_unverified`, 5.3 `test_unverified_read_back_still_drafts`, M-DEL-1 |
+| DEL-7 | Re-run after the draft already exists | Skipped unless `--force` | M | ✅ | 5.2 `test_draft_is_idempotent_unless_forced`, 5.3 `test_rerun_same_week_updates_doc_and_keeps_draft` |
+| DEL-8 | Draft fails after the Doc succeeded, including a server that crashes, won't start or times out | `PUBLISHED_DOC_ONLY`; `--from draft` resumes with no second Doc. `draft` refuses a pulse that failed validation. | M | ✅ | 5.3 `test_resume_from_draft_after_draft_failure`, `test_gateway_crash_during_draft_keeps_doc_only`, `test_draft_refuses_a_pulse_that_failed_validation`; 5.1 `test_connection_errors_become_tool_call_failed` |
 | DEL-9 | Crash between a create call returning and the ledger saving | A re-run may duplicate the Doc. Kept small by saving the ledger right after each create. | L | 🟦 | 5.2 ordering, `test_ledger_is_saved_right_after_create` |
 | DEL-10 | `recipient` or `drive_folder_id` still a placeholder | `pulse doctor` fails | M | ✅ | 5.3 `test_doctor_fails_on_placeholder_config` |
 | DEL-11 | Concurrent runs for the same week | The second run exits with `run_in_progress` (exit code 3) | M | ✅ | 2.4 `test_concurrent_run_same_week_refused`, `test_run_in_progress_exit_code` |

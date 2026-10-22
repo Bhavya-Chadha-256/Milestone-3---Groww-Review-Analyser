@@ -293,8 +293,9 @@ A Jinja2 template merges the `PulseDraft`, the aggregates and the quotes into `p
 **[Decision]** Each week gets its **own Doc**, titled `Groww Review Pulse — 2026-W42 (12–18 Oct)`, in a configured Drive folder. Separate Docs give each week a stable link and turn the folder into a browsable archive.
 
 - **Idempotency:** the run ledger stores `iso_week → doc_id`, saved immediately after each create call. If the week already has a Doc, the stage replaces its content instead of creating a duplicate.
-- **Deleted Docs:** if the stored Doc no longer exists (someone deleted it), the stage creates a new one and updates the ledger (DEL-5).
-- **Body:** the plain-text render of the pulse (a Doc shows Markdown syntax literally). Only a pulse whose saved `validation.json` passed is ever published, even with `--from publish`.
+- **Deleted Docs:** if the stored Doc no longer exists (someone deleted it), the stage creates a new one and updates the ledger (DEL-5). "No longer exists" means the read error matches `read_doc.not_found_regex`; any other read error is raised, so a transient failure never makes a second Doc. The recreated Doc's ledger entry drops the old `draft_id`, so the draft stage makes a fresh draft that links to the new Doc.
+- **Link:** when the create result has no URL the regex can find, the Doc link is built from the ID (`https://docs.google.com/document/d/<id>/edit`), so the draft never carries an empty link.
+- **Body:** the plain-text render of the pulse (a Doc shows Markdown syntax literally). Only a pulse whose saved `validation.json` passed is ever published or drafted, even with `--from publish` or `--from draft`; `draft` also requires that the same run published the Doc (`delivery.json` in its run folder).
 - **Read-back:** after writing, the stage reads the Doc back through MCP and checks that the theme names and quote texts are present. On a mismatch it retries once, then marks the run `DELIVERY_UNVERIFIED` and still creates the draft.
 
 ### 3.10 Gmail draft (MCP)
@@ -430,10 +431,11 @@ server:
   transport: stdio                # or streamable_http with url:
   command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
   env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]   # names only; values in .env
+  timeout_seconds: 60             # per request, so a hung server can't hold the week's lock
 operations:
   create_doc:   { tool: "<create_doc_tool>", args: {title: "{title}", content: "{body}", folder_id: "{folder_id}"}, requires_id: true, id_regex: "...", url_regex: "..." }
   update_doc:   { tool: "<update_doc_tool>", args: {document_id: "{doc_id}", content: "{body}"} }
-  read_doc:     { tool: "<read_doc_tool>", args: {document_id: "{doc_id}"} }
+  read_doc:     { tool: "<read_doc_tool>", args: {document_id: "{doc_id}"}, not_found_regex: "(?i)not found|404" }
   create_draft: { tool: "<create_draft_tool>", args: {to: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}, optional_args: [html_body], requires_id: true, id_regex: "..." }
 allowlist: [create_doc, update_doc, read_doc, create_draft]
 ```
@@ -442,9 +444,11 @@ allowlist: [create_doc, update_doc, read_doc, create_draft]
 
 A create call whose result has no ID matching `id_regex` fails rather than storing an empty ID (DEL-13). Optional arguments, such as the HTML body, are only sent when the server's tool accepts them (DEL-12).
 
+**Failures [as built after the Phase 5 review]:** every gateway failure inside a delivery stage (a server that won't start, crashes, times out, or a tool error) becomes a `ToolCallFailed`, so `publish` ends `FAILED` with `--from publish` and `draft` ends `PUBLISHED_DOC_ONLY` with `--from draft` (DEL-4, DEL-8). A missing or invalid `config/mcp.yaml` (or a template naming an unknown field) is a `McpConfigError`: the pre-check and `pulse doctor` report it before any LLM spend instead of crashing. Empty `.env` values are not passed to a stdio server.
+
 ### 6.3 Safety rules
 
-- **Allowlist only.** The pipeline can only call the mapped operations above. Any tool whose name matches `send|share|delete|trash|remove|permission|publish|forward` is refused, even if it is mapped by mistake.
+- **Allowlist only.** The pipeline can only call the mapped operations above. Any tool whose name matches `send|share|delete|trash|remove|permission|publish|forward|transfer|ownership|move|reply` is refused, even if it is mapped by mistake.
 - **No credentials in our code.** The MCP server runs its own OAuth consent flow and keeps its own tokens. Our config holds a server command or URL and nothing more.
 - **Every call is logged.** The tool name, argument names, the result ID and the latency go into the logs. Document bodies are not logged.
 

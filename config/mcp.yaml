@@ -3,10 +3,13 @@
 # It holds the Google OAuth tokens itself; this file holds no secrets. `env` lists the NAMES of variables
 # passed through to the server process (their values live in .env).
 # Tool names stay <placeholders> until `pulse doctor` lists the real ones (Phase 5 checkpoint).
+# `timeout_seconds` bounds every request; `not_found_regex` on read_doc tells "Doc deleted" (recreate it,
+# DEL-5) from any other error (raise it). Google's APIs answer 404 "Requested entity was not found."
 server:
   transport: stdio
   command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
   env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]
+  timeout_seconds: 60
 operations:
   create_doc:
     tool: <create_doc_tool>
@@ -20,6 +23,7 @@ operations:
   read_doc:
     tool: <read_doc_tool>
     args: {document_id: "{doc_id}"}
+    not_found_regex: '(?i)not found|404'
   create_draft:
     tool: <create_draft_tool>
     args: {to: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}

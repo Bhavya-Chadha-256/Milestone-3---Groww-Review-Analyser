@@ -21,10 +21,12 @@ import anyio
 import yaml
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters, get_default_environment
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PositiveInt
 
 LOG = logging.getLogger(__name__)
-FORBIDDEN_TOOL_RE = re.compile(r"send|share|delete|trash|remove|permission|publish|forward", re.IGNORECASE)
+FORBIDDEN_TOOL_RE = re.compile(
+    r"send|share|delete|trash|remove|permission|publish|forward|transfer|ownership|move|reply", re.IGNORECASE
+)
 
 
 class _Strict(BaseModel):
@@ -36,6 +38,7 @@ class ServerSpec(_Strict):
     command: list[str] | None = None
     url: str | None = None
     env: list[str] = []  # names of variables passed to a stdio server; values stay in .env
+    timeout_seconds: PositiveInt = 60  # per request, so a hung server can't hold the week's lock forever
 
 
 class OperationSpec(_Strict):
@@ -45,6 +48,7 @@ class OperationSpec(_Strict):
     requires_id: bool = False
     id_regex: str | None = None
     url_regex: str | None = None
+    not_found_regex: str | None = None  # an error matching it means "no such resource" (DEL-5)
 
 
 class McpConfig(_Strict):
@@ -70,6 +74,14 @@ class ForbiddenTool(Exception):
 
 class ToolCallFailed(Exception):
     pass
+
+
+class NotFound(ToolCallFailed):
+    """The tool says the resource doesn't exist (its error matched `not_found_regex`)."""
+
+
+class McpConfigError(Exception):
+    """config/mcp.yaml is missing or can't be used."""
 
 
 def load_mcp_config(path: Path) -> McpConfig:
@@ -98,11 +110,13 @@ class WorkspaceGateway:
             raise ForbiddenTool(f"operation {op!r} is not in the allowlist")
         if FORBIDDEN_TOOL_RE.search(spec.tool):
             raise ForbiddenTool(f"tool {spec.tool!r} is forbidden")
+        arguments = _arguments(spec, fields)
         started = time.monotonic()
-        result = await self.client.call_tool(spec.tool, _arguments(spec, fields))
+        result = await self.client.call_tool(spec.tool, arguments)
         blocks = "\n".join(block.text for block in result.content if getattr(block, "text", None))
         if result.is_error:
-            raise ToolCallFailed(f"{spec.tool}: {blocks[:300]}")
+            missing = spec.not_found_regex and re.search(spec.not_found_regex, blocks)
+            raise (NotFound if missing else ToolCallFailed)(f"{spec.tool}: {blocks[:300]}")
         text = json.dumps(result.structured_content or {}) + "\n" + blocks
         resource_id, url = _capture(spec.id_regex, text), _capture(spec.url_regex, text)
         if spec.requires_id and resource_id is None:  # DEL-13
@@ -124,8 +138,17 @@ class WorkspaceGateway:
 
 @asynccontextmanager
 async def open_gateway(cfg: McpConfig) -> AsyncIterator[WorkspaceGateway]:
-    async with Client(_server_target(cfg.server)) as client:
+    async with Client(_server_target(cfg.server), read_timeout_seconds=cfg.server.timeout_seconds) as client:
         yield WorkspaceGateway(client, cfg)
+
+
+def broken_gateway(reason: str) -> Callable[[], AbstractAsyncContextManager[WorkspaceGateway]]:
+    """A factory for an unusable config/mcp.yaml: the pre-check and doctor report `reason`; no crash."""
+
+    def connect() -> AbstractAsyncContextManager[WorkspaceGateway]:
+        raise McpConfigError(reason)
+
+    return connect
 
 
 def gateway_problem(factory: Callable[[], AbstractAsyncContextManager[WorkspaceGateway]]) -> str | None:
@@ -137,7 +160,7 @@ def gateway_problem(factory: Callable[[], AbstractAsyncContextManager[WorkspaceG
 
     try:
         _run(check)
-    except (MissingTool, ForbiddenTool) as error:
+    except (MissingTool, ForbiddenTool, McpConfigError) as error:
         return str(error)
     except Exception as error:  # an unreachable server can fail in many ways; report, don't crash
         return f"cannot reach the MCP server ({type(error).__name__}: {error})"
@@ -148,13 +171,19 @@ def run_with_gateway(
     factory: Callable[[], AbstractAsyncContextManager[WorkspaceGateway]],
     operation: Callable[[WorkspaceGateway], Awaitable[Any]],
 ) -> Any:
-    """Run one async delivery operation from synchronous pipeline code."""
+    """Run one async delivery operation from synchronous pipeline code. Any failure, including a server
+    that won't start, crashes or times out, is a `ToolCallFailed`, so the stage reports the `--from` step."""
 
     async def run() -> Any:
         async with factory() as gateway:
             return await operation(gateway)
 
-    return _run(run)
+    try:
+        return _run(run)
+    except ToolCallFailed:
+        raise
+    except Exception as error:
+        raise ToolCallFailed(f"{type(error).__name__}: {error}") from error
 
 
 def _run(function: Callable[[], Awaitable[Any]]) -> Any:
@@ -177,7 +206,7 @@ def _server_target(server: ServerSpec) -> StdioServerParameters | str:
         return server.url
     if not server.command:
         raise ValueError("config/mcp.yaml: stdio needs server.command")
-    passed = {name: os.environ[name] for name in server.env if name in os.environ}
+    passed = {name: os.environ[name] for name in server.env if os.environ.get(name)}  # "" would mask defaults
     return StdioServerParameters(
         command=server.command[0], args=server.command[1:], env=get_default_environment() | passed
     )
@@ -190,7 +219,10 @@ def _arguments(spec: OperationSpec, fields: Mapping[str, str]) -> dict[str, Any]
         needed = [field for _, field, _, _ in string.Formatter().parse(template) if field]
         if name in spec.optional_args and not all(fields.get(field) for field in needed):
             continue
-        arguments[name] = template.format_map(fields)
+        try:
+            arguments[name] = template.format_map(fields)
+        except KeyError as error:
+            raise McpConfigError(f"config/mcp.yaml: {spec.tool}.{name} uses unknown field {error}") from error
     return arguments
 
 
