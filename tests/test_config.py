@@ -156,3 +156,9 @@ def test_effort_rejects_levels_groq_does_not_offer(tmp_path: Path) -> None:
     path = write_config(tmp_path, lambda config: config["llm"]["stages"]["compose"].update(effort="max"))
     with pytest.raises(ValidationError, match="effort"):
         load_settings(path)
+
+
+def test_discovery_settings(settings: Settings) -> None:  # D3, LLM-12
+    themes = settings.themes
+    assert themes.discovery_batch == 100 and themes.discovery_sample == 400
+    assert "customer support" in themes.seed_hints and "KYC and onboarding" in themes.seed_hints

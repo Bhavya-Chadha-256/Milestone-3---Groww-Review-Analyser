@@ -358,7 +358,7 @@ Placeholders are shown in `<angle brackets>`. The word budget is split by sectio
 | Compose | `high` | 3000 |
 | Eval judges (`qwen/qwen3.8-27b`) | n/a | 1000 |
 
-**Free-plan limits** (per model; set in `llm.limits`, verify in the Groq console): 30 requests/min, 1,000 requests/day, 8K tokens/min and 200K tokens/day. No single request may exceed the per-minute token limit, which is why discovery runs in 100-review passes (§3.3) and classification in 50-review chunks.
+**Free-plan limits** (per model; set in `llm.limits`, verify in the Groq console): 30 requests/min, 1,000 requests/day, 8K tokens/min and 200K tokens/day. No single request may exceed the per-minute token limit, which is why discovery runs in passes of at most 100 reviews, each sized by token estimate to fit (§3.3) and classification in 50-review chunks.
 
 ### 5.2 Structured outputs
 

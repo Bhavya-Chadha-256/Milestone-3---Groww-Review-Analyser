@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Task 3.1 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.2 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
@@ -1400,7 +1400,7 @@ Expected: all passed.
 - write a one-line definition and include/exclude hints for each theme;
 - and the prompt must contain `DATA_RULE`. Its first line is `<!-- prompt_version: discover-v1 -->`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_stratified_sample_balances_ratings(): ...   # 900×5★ + 100×1★, n=200 → {1: 100, 5: 100}
@@ -1421,21 +1421,31 @@ def test_discover_rejects_reserved_unthemed_id(): ...                    # two b
 def test_needs_rediscovery(share, expected): ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_discover.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `sample.py`, `discover.py` and `discover.md`**
+- [x] **Step 3: Implement `sample.py`, `discover.py` and `discover.md`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_discover.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: discover a versioned taxonomy of three to five themes"`
+
+> **As built (2026-10-22):**
+> - **Signature:** `discover_taxonomy` takes `settings: LLMSettings` (keyword) to size its requests.
+> - **Batches are sized by tokens.** Each pass is filled until its request (prompt, schema estimate, reviews and `max_tokens`) reaches 90% of `limits.tpm`, and `themes.discovery_batch` (100) is only a cap. With the 3,000-token output allowance, a pass holds about 75–90 real reviews, so the 400-review sample takes about 5–6 passes plus the merge.
+> - **Single batch:** if the whole sample fits one request, that pass is the final answer, validated and re-asked directly, with no merge.
+> - **Merge prompt:** the merge has its own prompt, `src/pulse/llm/prompts/discover_merge.md` (`discover-merge-v1`).
+> - **Short keys:** themes return `example_keys` (the short keys `k`) instead of review IDs. Unknown keys are dropped, and the valid ones become each candidate's `supporting_reviews` count in the merge input. `Taxonomy` stores no examples.
+> - **Sampler:** it sorts each `(rating, IST week)` group by `review_id` before the seeded shuffle, so results don't depend on input order.
+> - **Seed hints:** `config/pulse.yaml` now holds the D3 hints and `themes.discovery_batch: 100`.
+> - **Extra tests:** `test_stratified_sample_balances_weeks`, `test_long_reviews_shrink_the_batches`, `test_discover_rejects_duplicate_and_malformed_ids`, `test_discovery_settings`.
 
 **Seed hints (D3).** Replace `themes.seed_hints` in `config/pulse.yaml` with `[customer support, app bugs and performance, charges and brokerage, trading and F&O orders, charts and market data, KYC and onboarding, payments and withdrawals, mutual funds and SIP]`. They stay suggestions. The brief's examples (onboarding, KYC, payments, withdrawals) survive as the combined hints, and statements (2.8%) is left to discovery.
 

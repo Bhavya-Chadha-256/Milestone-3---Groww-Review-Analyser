@@ -73,6 +73,7 @@ class ThemesSettings(StrictModel):
     name_max_words: PositiveInt = 4
     min_reviews: PositiveInt = 100
     discovery_sample: PositiveInt = 400
+    discovery_batch: PositiveInt = 100  # max reviews per discovery pass; token budget may make passes smaller
     rediscover_unthemed_threshold: Share = 0.20
     seed_hints: list[str] = []
 

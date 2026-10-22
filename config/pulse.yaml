@@ -18,8 +18,10 @@ themes:
   name_max_words: 4
   min_reviews: 100
   discovery_sample: 400
+  discovery_batch: 100                   # max reviews per discovery pass (passes also fit the per-minute token limit)
   rediscover_unthemed_threshold: 0.20
-  seed_hints: [onboarding, KYC, payments, statements, withdrawals]
+  seed_hints: [customer support, app bugs and performance, charges and brokerage, trading and F&O orders,
+               charts and market data, KYC and onboarding, payments and withdrawals, mutual funds and SIP]
 llm:
   provider: groq                         # Groq free tier (architecture §5.1); key in .env as GROQ_API_KEY
   model: openai/gpt-oss-120b
