@@ -6,6 +6,7 @@ falls back to a review's first sentence when the model can't produce a valid pic
 
 import random
 import re
+import unicodedata
 from collections.abc import Sequence
 from statistics import median
 from zoneinfo import ZoneInfo
@@ -18,6 +19,7 @@ from pulse.llm.prompts import load_prompt, reviews_json
 from pulse.llm.schema import LLMRefusal, LLMRequest, LLMSchemaError, LLMTruncated
 from pulse.models import Classification, Quote, Review
 from pulse.privacy.scrub import PLACEHOLDER_RE
+from pulse.report.words import count_words
 from pulse.timeutil import Window, iso_week_of
 
 QUOTABLE_LANGUAGES = frozenset({"en", "hinglish"})
@@ -45,10 +47,29 @@ def normalize_quote_text(text: str) -> str:
 
 
 def verify_quote(quote: str, text: str, max_words: int = 30) -> bool:
-    """True only for a 1..max_words-word span that appears in `text` (QUO-1)."""
-    stripped = quote.strip(SURROUNDING_QUOTES)
-    words = len(stripped.split())
-    return 1 <= words <= max_words and normalize_quote_text(stripped) in normalize_quote_text(text)
+    """True only for a span of 1..max_words words (counted as the validator counts them) that appears
+    in `text` and starts and ends on word boundaries, so "able" never matches inside "unable" (QUO-1)."""
+    span = normalize_quote_text(quote.strip(SURROUNDING_QUOTES))
+    if not 1 <= count_words(span) <= max_words:
+        return False
+    haystack = normalize_quote_text(text)
+    start = haystack.find(span)
+    while start != -1:
+        if _on_word_boundaries(haystack, start, span):
+            return True
+        start = haystack.find(span, start + 1)
+    return False
+
+
+def _on_word_boundaries(text: str, start: int, span: str) -> bool:
+    end = start + len(span)
+    cut_before = start > 0 and _is_word_char(span[0]) and _is_word_char(text[start - 1])
+    cut_after = end < len(text) and _is_word_char(span[-1]) and _is_word_char(text[end])
+    return not (cut_before or cut_after)
+
+
+def _is_word_char(char: str) -> bool:
+    return char.isalnum() or char == "_" or unicodedata.category(char).startswith("M")  # Devanagari signs
 
 
 def first_sentence(text: str) -> str:
@@ -122,7 +143,7 @@ def _ask(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
             continue
         error = _pick_error(pick, keys, by_id, limits)
         if error is None:
-            return by_id[keys[pick.k]], pick.quote.strip(SURROUNDING_QUOTES)
+            return by_id[keys[pick.k]], " ".join(pick.quote.strip(SURROUNDING_QUOTES).split())
     return None
 
 
@@ -145,7 +166,7 @@ def _fallback(theme_id: str, pool: list[Review], limits: PulseSettings) -> tuple
         if len(sentence.split()) >= FALLBACK_MIN_WORDS and verify_quote(
             sentence, review.text, limits.quote_max_words
         ):
-            return review, sentence
+            return review, " ".join(sentence.split())
     raise QuoteUnavailable(theme_id)
 
 

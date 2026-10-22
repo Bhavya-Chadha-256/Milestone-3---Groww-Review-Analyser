@@ -33,6 +33,7 @@ NO_MODEL = "none"
 # A review ID is a 16-character hex hash whose digit runs can look like Aadhaar or phone numbers. A token is
 # skipped if it has a hex letter or is a stored review ID; any other all-digit value is still checked.
 HEX_TOKEN = re.compile(r"(?<![0-9A-Za-z])[0-9a-f]{16}(?![0-9A-Za-z])")
+DECIMAL = re.compile(r"(?<![\d.])\d+\.\d+(?![\d.])")  # JSON floats such as shares: "0.3037037037037037"
 
 
 def run_deterministic_suite(
@@ -50,23 +51,8 @@ def run_deterministic_suite(
 
 def _baselines(run: EvalRun) -> None:
     """Golden pulse passes, every gate mutation fails; real quote spans verify, altered ones don't."""
-    mutated = []
-    for mutate, _ in MUTATIONS:
-        inputs = valid_inputs()
-        mutate(inputs)
-        mutated.append(_passes(inputs))
-    quotes = valid_inputs()
-    real = [verify_quote(quote.text, quotes.reviews[quote.review_id].text) for quote in quotes.quotes]
-    altered = [
-        verify_quote("xyzzy " + quote.text.split(" ", 1)[1], quotes.reviews[quote.review_id].text)
-        for quote in quotes.quotes
-    ]
-    scores = {
-        "ORACLE-validators": float(_passes(valid_inputs())),
-        "NULL-validators": sum(mutated) / len(mutated),
-        "ORACLE-quotes": sum(real) / len(real),
-        "NULL-quotes": sum(altered) / len(altered),
-    }
+    scores = {"ORACLE-validators": float(_passes(valid_inputs())), "NULL-validators": _mutations_passing()}
+    scores |= _quote_baselines()
     for metric_id, value in scores.items():
         oracle = metric_id.startswith("ORACLE")
         run.metric(metric_id, value, target=1.0 if oracle else 0.0, gate="blocking", higher_is_better=oracle)
@@ -75,6 +61,25 @@ def _baselines(run: EvalRun) -> None:
         raise EvalAborted(
             f"baseline misbehaved: {', '.join(broken)}; the validators or verify_quote are broken"
         )
+
+
+def _mutations_passing() -> float:
+    passing = []
+    for mutate, _ in MUTATIONS:
+        inputs = valid_inputs()
+        mutate(inputs)
+        passing.append(_passes(inputs))
+    return sum(passing) / len(passing)
+
+
+def _quote_baselines() -> dict[str, float]:
+    """Real spans must verify; a changed word or a span cut mid-word ("able" in "unable") must not."""
+    inputs = valid_inputs()
+    pairs = [(quote.text, inputs.reviews[quote.review_id].text) for quote in inputs.quotes]
+    real = [verify_quote(quote, text) for quote, text in pairs]
+    altered = [verify_quote("xyzzy " + quote.split(" ", 1)[1], text) for quote, text in pairs]
+    altered += [verify_quote(quote[1:], text) for quote, text in pairs]
+    return {"ORACLE-quotes": sum(real) / len(real), "NULL-quotes": sum(altered) / len(altered)}
 
 
 def _passes(inputs: PulseInputs) -> bool:
@@ -132,7 +137,7 @@ def _pii_kinds(path: Path, known_ids: set[str]) -> list[str]:
         lambda token: _mask_review_id(token.group(), known_ids),
         path.read_text(encoding="utf-8", errors="ignore"),
     )
-    kinds = [match.kind for match in find_pii(text)]
+    kinds = [match.kind for match in find_pii(DECIMAL.sub("<number>", text))]
     if path.name == "quotes.json":
         quotes = json.loads(text).get("quotes", [])
         kinds += ["placeholder" for quote in quotes if PLACEHOLDER_RE.search(quote["text"])]

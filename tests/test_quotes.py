@@ -205,3 +205,37 @@ def test_quotes_prompt_has_rules() -> None:  # QUO-7
     select_quotes(llm, [stats("withdrawals")], reviews, labels, WINDOW, LIMITS)
     system = llm.calls[0].system
     assert DATA_RULE in system and "Avoid profanity and personal attacks." in system
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("able to withdraw my money", "I am unable to withdraw my money", False),
+        ("safe app", "Very unsafe app", False),
+        ("ad experience", "bad experience", False),
+        ("unable to withdraw", "I am unable to withdraw my money", True),
+        ("money stuck.", "My money stuck. Help", True),
+    ],
+)
+def test_verify_quote_requires_word_boundaries(case: tuple[str, str, bool]) -> None:  # QUO-1
+    quote, text, expected = case
+    assert verify_quote(quote, text) is expected
+
+
+def test_verify_quote_counts_words_like_the_validator() -> None:  # V5 parity
+    quote = "F&O and T+1 " + " ".join(["slow"] * 26)  # 29 by str.split, 31 by count_words
+    assert len(quote.split()) == 29
+    assert not verify_quote(quote, f"Sadly {quote} today", max_words=30)
+
+
+def test_quote_whitespace_is_collapsed() -> None:  # QUO-9: a span across a paragraph break
+    text = "Withdrawal stuck for three days.\n\nSupport never replies to my emails at all."
+    reviews, labels = labelled({"withdrawals": [review("w1", text)]})
+
+    def across_paragraphs(req: LLMRequest) -> BaseModel:
+        return req.schema.model_validate({"k": 1, "quote": "three days.\n\nSupport never replies"})
+
+    quotes, fallbacks = select_quotes(
+        FakeLLM({"quotes": across_paragraphs}), [stats("withdrawals")], reviews, labels, WINDOW, LIMITS
+    )
+    assert fallbacks == 0 and quotes[0].text == "three days. Support never replies"

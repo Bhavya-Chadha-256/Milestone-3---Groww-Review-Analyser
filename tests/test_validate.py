@@ -49,3 +49,13 @@ def test_v7_allows_alphanumeric_tokens(text: str) -> None:  # REN-5
 def test_route(case: tuple[list[str], str | None]) -> None:
     codes, expected = case
     assert route([ValidationIssue(code, "x") for code in codes]) == expected
+
+
+def test_overlong_quote_routes_to_quotes() -> None:  # a compose retry can't shorten a quote
+    inputs = valid_inputs()
+    quote = "F&O and T+1 " + " ".join(["slow"] * 26)  # 29 by str.split, 31 by count_words
+    inputs.reviews["withdrawals0"] = inputs.reviews["withdrawals0"].model_copy(
+        update={"text": f"Sadly {quote} today"}
+    )
+    inputs.quotes[0].text = quote
+    assert route(inputs.check().issues) == "quotes"

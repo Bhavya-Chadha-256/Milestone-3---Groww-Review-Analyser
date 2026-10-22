@@ -210,3 +210,15 @@ def test_artifact_scan_ignores_review_ids(
     assert metrics(deterministic(tmp_settings, tmp_path))["E-PII-1"]["value"] == 0
     (run_dir / "notes.txt").write_text("account 1234567890123456 and phone 9876543210\n")
     assert metrics(deterministic(tmp_settings, tmp_path / "again"))["E-PII-1"]["value"] >= 2
+
+
+def test_artifact_scan_ignores_decimal_fractions(tmp_settings: Settings, tmp_path: Path) -> None:  # E-PII-1
+    run_dir = Path(tmp_settings.paths.runs) / "2026-W42-20261019T050000"
+    run_dir.mkdir(parents=True)
+    shares = {
+        "window_mean_rating": 3.4074074074074074,
+        "duplicate_share": 0.07407407407407407,
+        "share": 0.3037037037037037,
+    }
+    (run_dir / "aggregates.json").write_text(json.dumps(shares))
+    assert metrics(deterministic(tmp_settings, tmp_path))["E-PII-1"]["value"] == 0
