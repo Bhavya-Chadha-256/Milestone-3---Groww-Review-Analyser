@@ -141,7 +141,7 @@ def _server_target(server: ServerSpec) -> StdioServerParameters | str:
 
 
 def _arguments(spec: OperationSpec, fields: Mapping[str, str]) -> dict[str, Any]:
-    """Fill each mapped argument; an optional one is left out when its fields are missing or empty (DEL-12)."""
+    """Fill each mapped argument; an optional one is dropped when its fields are missing or empty (DEL-12)."""
     arguments = {}
     for name, template in spec.args.items():
         needed = [field for _, field, _, _ in string.Formatter().parse(template) if field]

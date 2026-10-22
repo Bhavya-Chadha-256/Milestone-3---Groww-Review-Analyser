@@ -2278,9 +2278,9 @@ A fresh-context review returned "with fixes" (0 Critical, 6 Important, 8 Minor).
 - `create_gmail_draft(to, subject, body, html_body="")`
 - `send_gmail_message(...)`, which exists so tests can prove it is refused
 
-The module `STATE` holds `docs`, `drafts`, `calls` (tool name plus arguments), `fail_next: set[str]`, `stale_reads: bool` and `omit_ids: bool`. Tests connect with `mcp.shared.memory.create_connected_server_and_client_session(server._mcp_server)`.
+The module `STATE` holds `docs`, `drafts`, `calls` (tool name plus arguments), `fail_next: set[str]`, `stale_reads: bool` and `omit_ids: bool`. Tests connect with `mcp.Client(stub_mcp.server)` (as built; see below).
 
-- [ ] **Step 1: Write the failing tests** (`@pytest.mark.anyio`)
+- [x] **Step 1: Write the failing tests** (`@pytest.mark.anyio`)
 
 ```python
 async def test_check_tools_passes_with_stub(gateway): ...
@@ -2297,21 +2297,30 @@ async def test_create_without_extractable_id_fails(gateway):            # DEL-13
 async def test_unmapped_optional_field_is_not_sent(stub_session): ...   # DEL-12: no html mapping → STATE.calls args lack html_body
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_mcp_gateway.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `mcp_client.py`, the stub and both YAML files**
+- [x] **Step 3: Implement `mcp_client.py`, the stub and both YAML files**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_mcp_gateway.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add allowlisted MCP gateway with config-mapped Workspace tools"`
+
+> **As built (2026-10-22):**
+> - **mcp 2.3 API:** the installed SDK is mcp 2.x, where `FastMCP` became `mcp.server.mcpserver.MCPServer` and `mcp.Client` connects to a URL (streamable HTTP), `StdioServerParameters` (stdio) or, in tests, an in-process server. So `WorkspaceGateway(client, cfg)` wraps an entered `mcp.Client`, and `open_gateway` is `async with Client(target)`. `create_connected_server_and_client_session` no longer exists; tests use `Client(stub_mcp.server)`.
+> - **`ServerSpec.env`:** a list of variable **names** passed through to a stdio server (its OAuth client ID and secret, read from `.env`); a stdio server otherwise inherits only a few safe variables. The config holds no values.
+> - **Names:** `ToolResult(resource_id, url, text)` and the field `recipient` replace the plan's `id` and `to`, because of the two-character naming rule. The stub's draft tool takes `recipient`; the real server's argument name is set in `config/mcp.yaml`.
+> - **`FORBIDDEN_TOOL_RE`:** `send|share|delete|trash|remove|permission|publish|forward`, case-insensitive. `check_tools` refuses a mapped forbidden tool before listing tools; `call` refuses an operation outside the allowlist before any network call.
+> - **Stub errors** use the SDK's `ToolError`, so the message (e.g. `invalid_grant`) reaches `ToolCallFailed`; an unexpected exception would be masked as "Error executing tool".
+> - **Server chosen:** `workspace-mcp` (github.com/taylorwilsdon/google_workspace_mcp) over stdio, `uvx workspace-mcp --single-user --tools docs gmail`. Tool names stay `<placeholders>` in `config/mcp.yaml` until the authorised server lists them.
+> - **Extra tests:** `test_repo_config_loads_with_placeholder_tools`.
 
 ---
 
