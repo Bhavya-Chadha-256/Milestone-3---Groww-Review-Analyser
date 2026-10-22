@@ -1,0 +1,18 @@
+<h1>{{ ctx.title }}</h1>
+<p>{{ ctx.meta_line }}</p>
+<h2>Top themes</h2>
+<ol>
+{% for theme in ctx.themes %}
+  <li><strong>{{ theme.name }}</strong> — {{ theme.share_pct }}% of reviews{{ theme.trend }}. {{ theme.summary }}</li>
+{% endfor %}
+</ol>
+<h2>What users said</h2>
+{% for quote in ctx.quotes %}
+<blockquote>"{{ quote.text }}" — ★{{ quote.rating }} · {{ quote.source | source_name }} · {{ quote.month }}</blockquote>
+{% endfor %}
+<h2>Action ideas</h2>
+<ol>
+{% for action in ctx.actions %}
+  <li>{{ action.action }} <em>({{ action.theme_names | join(", ") }})</em></li>
+{% endfor %}
+</ol>

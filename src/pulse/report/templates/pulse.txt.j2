@@ -1,0 +1,17 @@
+{{ ctx.title }}
+{{ ctx.meta_line }}
+
+Top themes
+{% for theme in ctx.themes %}
+{{ loop.index }}. {{ theme.name }} — {{ theme.share_pct }}% of reviews{{ theme.trend }}. {{ theme.summary }}
+{% endfor %}
+
+What users said
+{% for quote in ctx.quotes %}
+"{{ quote.text }}" — ★{{ quote.rating }} · {{ quote.source | source_name }} · {{ quote.month }}
+{% endfor %}
+
+Action ideas
+{% for action in ctx.actions %}
+{{ loop.index }}. {{ action.action }} ({{ action.theme_names | join(", ") }})
+{% endfor %}

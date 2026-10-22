@@ -2037,7 +2037,7 @@ Expected: all passed.
 
 **`route`:** returns `"quotes"` if any V3 or V6 issue exists, else `"compose"` if any issues exist, else `None`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_count_words_rule(): ...                                         # "# Top themes\n1. **Withdrawals** — 22% (↑4 pts)." == 6
@@ -2062,25 +2062,33 @@ def test_v7_allows_alphanumeric_tokens(text): ...                        # REN-5
 def test_route(codes, expected): ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_render.py tests/test_validate.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `words.py`, `render.py` and the template**
+- [x] **Step 3: Implement `words.py`, `render.py` and the template**
 
 Then write `pulse_golden.md` from a manually checked render. Read it fully before committing it as the golden file.
 
-- [ ] **Step 4: Implement `validate.py`**
+- [x] **Step 4: Implement `validate.py`**
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_render.py tests/test_validate.py -v`
 Expected: all passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 `git commit -m "feat: render the pulse and enforce V1–V7 publish gates"`
+
+> **As built (2026-10-22):**
+> - **Templates:** `pulse.md.j2` (Doc), `pulse.txt.j2` (plain email body, quotes verbatim) and `pulse.html.j2` (HTML email body, Jinja autoescape), all under `src/pulse/report/templates/`. Quotes in the Markdown render are separated by a blank line, so each is its own blockquote.
+> - **`PulseContext`** holds `ThemeLine(name, share_pct, trend, summary)` and `ActionLine(action, theme_names)` rows; summaries are matched to the top themes by `theme_id`, and V2 still checks the draft's order.
+> - **Meta line:** the window total is printed without a thousands separator (`1240 reviews`), so it counts as one word; the average is left out if there are no ratings.
+> - **V-gate messages** carry field names and counts only (`summary for kyc has 19 words (max 18)`); V6 names the kind of personal data, never the value.
+> - **Test helper:** `tests/pulse_fixtures.py` builds a complete valid input (`valid_inputs()`); the mutation tests change a fresh copy.
+> - **Extra tests:** `test_escape_md_escapes_markdown_syntax`, `test_meta_line_names_both_sources`, `test_v5_message_names_field_and_counts`, `test_taxonomy_over_five_themes_fails_v2`.
 
 ---
 
