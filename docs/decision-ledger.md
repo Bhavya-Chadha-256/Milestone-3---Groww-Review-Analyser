@@ -175,4 +175,11 @@ Final(P5): Ruling: M-9 not a defect — evaluation.md's 🔴 is the Gate column 
 Final(P5): minor (deferred to Phase 6): PUBLISHED_DOC_ONLY/DELIVERY_UNVERIFIED exit 0; --force has two meanings (budget vs redraft).
 Final(P5): Ruling: a missing/invalid config/mcp.yaml becomes broken_gateway(reason), so the existing pre-check/doctor report it before LLM spend — one mechanism for M-3 and M-4 — cost if wrong: none.
 User (2026-10-22): wants to connect hosted MCP server https://milestone-3-mcp-testing.onrender.com/mcp (repo Bhavya-Chadha-256/Milestone-3---MCP-Testing). Probe: reachable, needs Bearer MCP_AUTH_TOKEN; tools google_auth_status, gdocs_append_text, gmail_send_email — no Doc create/read, no Gmail draft (gmail.send scope only). Decision asked of the user.
+User (2026-10-22): chose "Adapt pulse to the server as-is" for the hosted gmail-gdocs-mcp (no Doc create/read, no draft). Accepted: brief's Gmail-draft item unmet.
+Task 5.4: Ruling: delivery mode is chosen by which operations config/mcp.yaml maps (append_doc vs create_doc; create_draft optional) — keeps the 5.1–5.3 path for servers with create/read/draft tools — cost if wrong: none (both paths tested).
+Task 5.4: Ruling: append once per week, re-run skips (doc_already_appended) unless --force — append isn't idempotent, so duplicates are worse than a stale section — cost if wrong: user passes --force.
+Task 5.4: Ruling: the target Doc is delivery.doc_id in config/pulse.yaml (not hard-coded in mcp.yaml) — delivery targets live in pulse settings; doctor checks only the fields mapped operations use — cost if wrong: move one setting.
+Task 5.4: Ruling: map google_auth_status as auth_status and check it in the pre-check/doctor — catches the 7-day Testing-mode refresh-token expiry before LLM spend — cost if wrong: one extra call per run.
+Task 5.4: Ruling: gmail_send_email is never mapped (and refused by name) — CLAUDE.md/architecture: pulse never sends — cost if wrong: none.
+Task 5.4: complete (tests: uv run pytest → 461 passed; live doctor reaches the server and reports only MCP_AUTH_TOKEN and delivery.doc_id missing)
 ```

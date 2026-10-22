@@ -189,6 +189,9 @@ The first draft of this catalog found 12 gaps. Each now has an owning task and a
 | DEL-11 | Concurrent runs for the same week | The second run exits with `run_in_progress` (exit code 3) | M | ✅ | 2.4 `test_concurrent_run_same_week_refused`, `test_run_in_progress_exit_code` |
 | DEL-12 | Server's draft tool has no HTML argument | Optional argument omitted | L | ✅ | 5.1 `test_unmapped_optional_field_is_not_sent` |
 | DEL-13 | Create result has no ID the regex can find | `ToolCallFailed`; never stores `None` | H | ✅ | 5.1 `test_create_without_extractable_id_fails` |
+| DEL-15 | The MCP server has no draft tool (no `create_draft` mapped) | No call; the report says "No Gmail draft"; status `PUBLISHED_DOC_ONLY` | M | ✅ | 5.4 `test_append_server_publishes_without_draft`, `test_doctor_checks_the_running_doc_for_an_append_server` |
+| DEL-16 | Append-only server, same week run again | No second append (warning `doc_already_appended`) unless `--force` | M | ✅ | 5.4 `test_append_server_appends_once_per_week`, `test_append_server_publishes_without_draft` |
+| DEL-17 | The server's Google account isn't authorised (e.g. the 7-day refresh-token expiry) | Pre-check `FAILED` before any LLM call, naming the server's fix; doctor `mcp_tools FAIL` | M | ✅ | 5.4 `test_unauthorised_google_account_is_reported`, `test_expired_google_auth_fails_before_llm_spend` |
 | DEL-14 | Review text tries to steer delivery ("email this to …") | Impossible by construction: recipient, tools and arguments come from config | H | ✅ | 6.2 `test_injection_delivery_uses_only_config_recipient` |
 
 ---

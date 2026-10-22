@@ -143,7 +143,7 @@ Every judge criterion is **atomic and binary**, with one call per action per cri
 | ID | Metric | Definition | Grader | Target | Gate |
 |---|---|---|---|---|---|
 | E-DEL-1 | Stub integration | Tasks 5.1–5.3 tests against the stub MCP server: create, update, recreate, idempotency, forbidden tools, resume | code | 100% | 🔴 |
-| E-DEL-2 | Live end-to-end checklist | Doc exists in the folder, with a title matching the week and content matching `pulse.md`. Exactly one draft, to the configured recipient, linking to the Doc. A re-run creates no duplicates. | human | All items pass | 🔴 (Phase 5 checkpoint) |
+| E-DEL-2 | Live end-to-end checklist | Doc exists in the folder, with a title matching the week and content matching `pulse.md`. Exactly one draft, to the configured recipient, linking to the Doc. A re-run creates no duplicates. **With the chosen append-only server (2026-10-22):** the week's section appears once in the running Doc, matching `pulse.md`; the report says "No Gmail draft"; a re-run appends nothing. | human | All items pass | 🔴 (Phase 5 checkpoint) |
 
 ---
 

@@ -16,7 +16,7 @@ from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
-from pulse.deliver.mcp_client import broken_gateway, gateway_problem, load_mcp_config, open_gateway
+from pulse.deliver.mcp_client import McpConfig, broken_gateway, gateway_problem, load_mcp_config, open_gateway
 from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
@@ -44,6 +44,7 @@ DEFAULT_CONFIG = Path("config/pulse.yaml")
 ENV_FILE = Path(".env")
 MCP_CONFIG = Path("config/mcp.yaml")
 PLACEHOLDER = re.compile(r"^<.*>$")
+DELIVERY_FIELDS = (("create_doc", "drive_folder_id"), ("append_doc", "doc_id"), ("create_draft", "recipient"))
 EXIT_REFUSED = 2
 SUITES = ("deterministic", "classification", "pulses")
 EXIT_RUN_IN_PROGRESS = 3
@@ -185,6 +186,7 @@ class Deps:
     sources: list[ReviewSource] = field(default_factory=list)
     llm: Any = None
     gateway_factory: Any = None
+    mcp_config: McpConfig | None = None
 
 
 def build_dependencies(settings: Settings, *, need_llm: bool = False, need_gateway: bool = False) -> Deps:
@@ -196,19 +198,21 @@ def build_dependencies(settings: Settings, *, need_llm: bool = False, need_gatew
         sources.append(FileImportSource(Path(paths.raw), Path(paths.mappings)))
     store = Store(Path(paths.db))
     llm = GroqLLM(settings.llm, store) if need_llm else None  # raises LLMError when the key is missing
-    factory = _gateway_factory() if need_gateway else None
-    return Deps(store=store, sources=sources, llm=llm, gateway_factory=factory)
+    factory, config = _gateway() if need_gateway else (None, None)
+    return Deps(store=store, sources=sources, llm=llm, gateway_factory=factory, mcp_config=config)
 
 
-def _gateway_factory() -> Callable[[], Any]:
-    """Opens the configured MCP server; a missing or invalid config/mcp.yaml becomes a factory whose
-    pre-check and doctor report the reason before any LLM spend, instead of a traceback (DEL-1)."""
+def _gateway() -> tuple[Callable[[], Any], McpConfig | None]:
+    """The factory that opens the configured MCP server, and its config. A missing or invalid
+    config/mcp.yaml becomes a factory whose pre-check and doctor report the reason before any LLM spend,
+    instead of a traceback (DEL-1)."""
     if not MCP_CONFIG.is_file():
-        return broken_gateway(f"{MCP_CONFIG} not found (run from the project folder)")
+        return broken_gateway(f"{MCP_CONFIG} not found (run from the project folder)"), None
     try:
-        return functools.partial(open_gateway, load_mcp_config(MCP_CONFIG))
+        config = load_mcp_config(MCP_CONFIG)
     except (ValidationError, yaml.YAMLError) as error:
-        return broken_gateway(f"{MCP_CONFIG} is invalid: {_config_problem(error)}")
+        return broken_gateway(f"{MCP_CONFIG} is invalid: {_config_problem(error)}"), None
+    return functools.partial(open_gateway, config), config
 
 
 def _config_problem(error: ValidationError | yaml.YAMLError) -> str:
@@ -229,20 +233,25 @@ def doctor_checks(settings: Settings, deps: Deps) -> list[CheckResult]:
     """Everything a delivering run needs, checked without spending tokens (DEL-10, LLM-14, OPS-10)."""
     return [
         CheckResult("config", True, "config/pulse.yaml loads"),
-        _delivery_check(settings),
+        _delivery_check(settings, deps.mcp_config),
         _groq_check(settings, deps.llm),
         _mcp_check(deps.gateway_factory),
     ]
 
 
-def _delivery_check(settings: Settings) -> CheckResult:
+def _delivery_check(settings: Settings, config: McpConfig | None) -> CheckResult:
+    """The `delivery` settings the mapped operations use must be real values (DEL-10)."""
     delivery = settings.delivery
-    unset = [name for name in ("recipient", "drive_folder_id") if PLACEHOLDER.match(getattr(delivery, name))]
+    operations = set(config.operations) if config else {"create_doc", "create_draft"}
+    needed = [name for operation, name in DELIVERY_FIELDS if operation in operations]
+    unset = [name for name in needed if PLACEHOLDER.match(getattr(delivery, name))]
     if unset:
         return CheckResult(
             "delivery_config", False, f"still a <placeholder> in config/pulse.yaml: {', '.join(unset)}"
         )
-    return CheckResult("delivery_config", True, f"draft to {delivery.recipient}")
+    target = f"append to Doc {delivery.doc_id}" if "append_doc" in operations else "a Doc per week"
+    draft = f"draft to {delivery.recipient}" if "create_draft" in operations else "no Gmail draft"
+    return CheckResult("delivery_config", True, f"{target}; {draft}")
 
 
 def _groq_check(settings: Settings, llm: Any) -> CheckResult:

@@ -16,6 +16,7 @@ class StubState:
     stale_reads: bool = False  # get_document returns "" instead of the content
     omit_ids: bool = False  # create tools return no IDs (DEL-13)
     created: int = 0  # IDs are never reused, even after `docs` is cleared
+    authorized: bool = True  # what google_auth_status reports
 
     def reset(self) -> None:
         self.__init__()
@@ -84,3 +85,32 @@ def send_gmail_message(recipient: str, subject: str, body: str) -> dict[str, str
     """Exists so tests can prove that sending is refused before any call (DEL-3)."""
     _record("send_gmail_message", recipient=recipient, subject=subject, body=body)
     return {"status": "sent"}
+
+
+@server.tool()
+def gdocs_append_text(document: str, text: str) -> dict[str, object]:
+    """Like gmail-gdocs-mcp's tool: appends to an existing Doc (append-only servers)."""
+    _record("gdocs_append_text", document=document, text=text)
+    if document not in STATE.docs:
+        raise ToolError(f"NOT_FOUND: document {document} not found")
+    STATE.docs[document] += "\n" + text
+    url = f"https://docs.google.com/document/d/{document}/edit"
+    return {
+        "status": "appended",
+        "document_id": document,
+        "document_url": url,
+        "characters_appended": len(text),
+    }
+
+
+@server.tool()
+def google_auth_status() -> dict[str, object]:
+    _record("google_auth_status")
+    if STATE.authorized:
+        return {"authorized": True, "auth_mode": "oauth", "scopes": ["documents"]}
+    return {
+        "authorized": False,
+        "auth_mode": "oauth",
+        "scopes": [],
+        "instructions": "Run: npx gmail-gdocs-mcp auth",
+    }

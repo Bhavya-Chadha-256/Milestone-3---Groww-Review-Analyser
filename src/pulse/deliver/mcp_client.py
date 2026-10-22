@@ -21,6 +21,7 @@ import anyio
 import yaml
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters, get_default_environment
+from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
 LOG = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class ServerSpec(_Strict):
     command: list[str] | None = None
     url: str | None = None
     env: list[str] = []  # names of variables passed to a stdio server; values stay in .env
+    auth_token_env: str | None = None  # name of the .env variable sent as an HTTP bearer token
     timeout_seconds: PositiveInt = 60  # per request, so a hung server can't hold the week's lock forever
 
 
@@ -84,6 +86,10 @@ class McpConfigError(Exception):
     """config/mcp.yaml is missing or can't be used."""
 
 
+class NotAuthorised(Exception):
+    """The MCP server reports that its Google account isn't authorised (e.g. an expired refresh token)."""
+
+
 def load_mcp_config(path: Path) -> McpConfig:
     return McpConfig.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
@@ -103,6 +109,19 @@ class WorkspaceGateway:
         missing = [tool for tool in mapped if tool not in available]
         if missing:
             raise MissingTool(f"the MCP server has no tool named: {', '.join(missing)}")
+
+    async def check_auth(self) -> None:
+        """If the server maps `auth_status`, fail before any LLM spend unless Google access works (DEL-17)."""
+        if not self.supports("auth_status"):
+            return
+        result = await self.call("auth_status")
+        if not re.search(r'"authorized":\s*true', result.text):
+            hint = _capture(r'"instructions":\s*"([^"]*)"', result.text) or "re-authorise the MCP server"
+            raise NotAuthorised(f"the Google account is not authorised on the MCP server: {hint}")
+
+    def supports(self, op: str) -> bool:
+        """Whether this server offers the operation (an append-only server has no create, read or draft)."""
+        return op in self.cfg.operations and op in self.cfg.allowlist
 
     async def call(self, op: str, **fields: str) -> ToolResult:
         spec = self.cfg.operations.get(op)
@@ -138,8 +157,15 @@ class WorkspaceGateway:
 
 @asynccontextmanager
 async def open_gateway(cfg: McpConfig) -> AsyncIterator[WorkspaceGateway]:
-    async with Client(_server_target(cfg.server), read_timeout_seconds=cfg.server.timeout_seconds) as client:
-        yield WorkspaceGateway(client, cfg)
+    timeout = cfg.server.timeout_seconds
+    if cfg.server.transport == "stdio":
+        async with Client(_server_target(cfg.server), read_timeout_seconds=timeout) as client:
+            yield WorkspaceGateway(client, cfg)
+        return
+    async with create_mcp_http_client(headers=_http_headers(cfg.server)) as http:
+        transport = streamable_http_client(_server_target(cfg.server), http_client=http)
+        async with Client(transport, read_timeout_seconds=timeout) as client:
+            yield WorkspaceGateway(client, cfg)
 
 
 def broken_gateway(reason: str) -> Callable[[], AbstractAsyncContextManager[WorkspaceGateway]]:
@@ -157,10 +183,11 @@ def gateway_problem(factory: Callable[[], AbstractAsyncContextManager[WorkspaceG
     async def check() -> None:
         async with factory() as gateway:
             await gateway.check_tools()
+            await gateway.check_auth()
 
     try:
         _run(check)
-    except (MissingTool, ForbiddenTool, McpConfigError) as error:
+    except (MissingTool, ForbiddenTool, McpConfigError, NotAuthorised) as error:
         return str(error)
     except Exception as error:  # an unreachable server can fail in many ways; report, don't crash
         return f"cannot reach the MCP server ({type(error).__name__}: {error})"
@@ -210,6 +237,16 @@ def _server_target(server: ServerSpec) -> StdioServerParameters | str:
     return StdioServerParameters(
         command=server.command[0], args=server.command[1:], env=get_default_environment() | passed
     )
+
+
+def _http_headers(server: ServerSpec) -> dict[str, str]:
+    """The bearer header for an HTTP server; the token is read from .env and never logged or stored."""
+    if not server.auth_token_env:
+        return {}
+    token = os.environ.get(server.auth_token_env)
+    if not token:
+        raise McpConfigError(f"{server.auth_token_env} is not set; add the MCP server's token to .env")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _arguments(spec: OperationSpec, fields: Mapping[str, str]) -> dict[str, Any]:

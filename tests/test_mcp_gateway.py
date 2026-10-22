@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from conftest import stub_factory
 from mcp import Client
 from stub_mcp import STATE
 
@@ -18,6 +19,7 @@ from pulse.deliver.mcp_client import (
     ServerSpec,
     ToolCallFailed,
     WorkspaceGateway,
+    _http_headers,
     _server_target,
     broken_gateway,
     gateway_problem,
@@ -102,12 +104,13 @@ async def test_unmapped_optional_field_is_not_sent(client: Client, stub_config: 
     assert [args for _, args in STATE.calls] == [{"recipient": "a@b.c", "subject": "S", "body": "T"}] * 2
 
 
-def test_repo_config_loads_with_placeholder_tools() -> None:
+def test_repo_config_maps_the_hosted_append_server() -> None:
     config = load_mcp_config(REPO_CONFIG)
-    assert set(config.allowlist) == {"create_doc", "update_doc", "read_doc", "create_draft"}
-    assert config.operations["create_doc"].requires_id and "html" in str(
-        config.operations["create_draft"].args
-    )
+    assert config.server.transport == "streamable_http" and config.server.auth_token_env == "MCP_AUTH_TOKEN"
+    assert set(config.allowlist) == {"append_doc", "auth_status"} == set(config.operations)
+    assert config.operations["append_doc"].tool == "gdocs_append_text"
+    assert config.operations["append_doc"].requires_id
+    assert not any(FORBIDDEN_TOOL_RE.search(spec.tool) for spec in config.operations.values())
 
 
 @pytest.mark.anyio
@@ -188,3 +191,21 @@ def test_connection_errors_become_tool_call_failed() -> None:  # DEL-8
 def test_broken_config_is_reported_not_raised() -> None:  # DEL-1
     problem = gateway_problem(broken_gateway("config/mcp.yaml: operations.create_doc.tool: missing"))
     assert problem == "config/mcp.yaml: operations.create_doc.tool: missing"
+
+
+def test_bearer_header_comes_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "tok-123")
+    spec = ServerSpec(transport="streamable_http", url="https://x/mcp", auth_token_env="MCP_AUTH_TOKEN")
+    assert _http_headers(spec) == {"Authorization": "Bearer tok-123"}
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "")
+    with pytest.raises(McpConfigError, match="MCP_AUTH_TOKEN is not set"):
+        _http_headers(spec)
+    assert _http_headers(ServerSpec(transport="streamable_http", url="https://x/mcp")) == {}
+
+
+def test_unauthorised_google_account_is_reported(append_config: McpConfig) -> None:  # DEL-17
+    STATE.authorized = False
+    problem = gateway_problem(stub_factory(append_config))
+    assert problem is not None and "not authorised" in problem and "npx gmail-gdocs-mcp auth" in problem
+    STATE.authorized = True
+    assert gateway_problem(stub_factory(append_config)) is None

@@ -64,7 +64,8 @@ evals:
   judge_model: qwen/qwen3.8-27b          # a different family from the pipeline model (architecture §9)
   judge_majority_flip_rate: 0.05
 delivery:
-  drive_folder_id: <FOLDER_ID>
+  drive_folder_id: <FOLDER_ID>      # servers that create a Doc per week (create_doc)
+  doc_id: <DOC_ID>                  # append-only servers (append_doc): the one running Doc, created by hand
   recipient: <self-or-alias@example.com>
   doc_title: "Groww Review Pulse — {iso_week} ({range})"
 ingest:

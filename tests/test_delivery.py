@@ -1,10 +1,11 @@
 import pytest
+from conftest import GatewayFactory
 from mcp import Client
 from stub_mcp import STATE
 
-from pulse.deliver.docs import publish_doc
+from pulse.deliver.docs import append_pulse, publish_doc
 from pulse.deliver.gmail import create_draft
-from pulse.deliver.mcp_client import McpConfig, ToolCallFailed, WorkspaceGateway
+from pulse.deliver.mcp_client import McpConfig, ToolCallFailed, WorkspaceGateway, run_with_gateway
 from pulse.store import Store
 
 WEEK = "2026-W42"
@@ -137,3 +138,25 @@ async def test_recreated_doc_clears_the_old_draft(
     STATE.docs.clear()
     recreated, _ = await publish(gateway, tmp_store, "B")
     assert recreated.draft_id is None and tmp_store.get_delivery(WEEK).draft_id is None
+
+
+def append_once(factory: GatewayFactory, store: Store, *, force: bool = False) -> tuple:
+    async def operation(gateway: WorkspaceGateway) -> tuple:
+        return await append_pulse(
+            gateway, store, iso_week=WEEK, doc_id="doc0", title="Pulse — 2026-W42", body="Body", force=force
+        )
+
+    return run_with_gateway(factory, operation)
+
+
+def test_append_server_appends_once_per_week(
+    append_factory: GatewayFactory, tmp_store: Store
+) -> None:  # DEL-16
+    first, warnings = append_once(append_factory, tmp_store)
+    assert first.doc_id == "doc0" and first.doc_verified and warnings == []
+    assert first.doc_url == "https://docs.google.com/document/d/doc0/edit"
+    assert STATE.docs["doc0"].endswith("Pulse — 2026-W42\n\nBody")
+    again, warnings = append_once(append_factory, tmp_store)
+    assert warnings == ["doc_already_appended"] and tools_called() == ["gdocs_append_text"]
+    append_once(append_factory, tmp_store, force=True)
+    assert tools_called() == ["gdocs_append_text"] * 2

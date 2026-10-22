@@ -47,13 +47,17 @@ Nothing is ever sent: the run creates or updates one Google Doc per ISO week and
 
 ## Delivery setup (Google Docs and Gmail through MCP)
 
-Google is reached only through a Google Workspace MCP server, [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp), which `pulse` starts locally (`uvx workspace-mcp --single-user --tools docs gmail`, from `config/mcp.yaml`). The server runs Google's OAuth flow and keeps the tokens; this project never holds Google credentials.
+Google is reached only through an MCP server; this project never holds Google credentials. `config/mcp.yaml` points at the user's own hosted server, [gmail-gdocs-mcp on Render](https://github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing) (`https://milestone-3-mcp-testing.onrender.com/mcp`, Streamable HTTP). It holds the Google tokens itself.
 
-1. **Google Cloud OAuth client.** In Google Cloud Console, create a project, enable the **Google Docs**, **Google Drive** and **Gmail** APIs, configure the OAuth consent screen (External, add yourself as a test user), and create an **OAuth client ID** of type **Desktop app**.
-2. **`.env`:** set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` (the account that owns the Doc and the draft).
-3. **`config/pulse.yaml`:** set `delivery.recipient` and `delivery.drive_folder_id` (the ID at the end of the Drive folder's URL).
-4. **Authorise once:** the first time the server needs Google, it opens a browser consent page; approve it. When the auth later expires, the run report says so and names the `--from` command.
-5. **Map the tools:** list the server's tools (script in `implementation.md` → Handoff → "Reading workspace-mcp's real tool names"), fill the `<placeholders>` in `config/mcp.yaml` with its tool and argument names, then run `uv run pulse doctor` until every line says `OK`. Tools that send, share or delete are refused by design.
+That server can only **append to an existing Doc** and **send** mail. So `pulse` appends each week's pulse once to one running Doc, and makes **no Gmail draft** (there is no draft tool, and the send tool is never mapped). The run ends `PUBLISHED_DOC_ONLY`, and the report says why. This leaves the brief's "Gmail draft" item unmet: a known gap, chosen by the user on 2026-10-22.
+
+1. **`.env`:** set `MCP_AUTH_TOKEN` to the server's bearer token (Render dashboard → the service → Environment → `MCP_AUTH_TOKEN`).
+2. **The running Doc:** create a Google Doc by hand (for example "Groww Review Pulse"), and set `delivery.doc_id` in `config/pulse.yaml` to the ID in its URL (`docs.google.com/document/d/<ID>/edit`). The server's Google account must be able to edit it.
+3. **`uv run pulse doctor`** until every line says `OK`. `mcp_tools` also asks the server whether its Google account is authorised (its refresh token expires every 7 days while the Google app is in Testing; re-run the server's `auth` then).
+
+A re-run of the same week doesn't append a second copy; `--force` appends again (for example after the backfill improves the pulse). With no read tool, the Doc can't be read back: "verified" means the server confirmed the append.
+
+**Other servers.** A server with create, read and draft tools (such as [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp)) maps `create_doc`, `update_doc`, `read_doc` and `create_draft` instead (architecture.md §6.2): one Doc per week in `delivery.drive_folder_id`, read back, plus a draft to `delivery.recipient`. Tools that send, share or delete are refused by design.
 
 **Mode B (no MCP server):** run `uv run pulse run --week <week> --dry-run`, then ask a Claude Code session with the claude.ai Google Drive and Gmail connectors to publish `runs/<run_id>/pulse.md` as a Doc and create the draft.
 

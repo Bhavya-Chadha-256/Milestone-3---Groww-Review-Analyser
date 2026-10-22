@@ -25,7 +25,7 @@ Update this table whenever a task or phase changes state.
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
 | 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC, newest reviews first. **Not currently scheduled** (the original chat's jobs were cancelled at hand-over); the new chat reschedules or runs it by hand. **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
-| 5. Delivery | 🚧 Code complete and reviewed (2026-10-22): Tasks 5.1–5.3 plus the review fix pass ("with fixes": 5 Important + 6 minor fixed, 455 tests). Checkpoint (manual end-to-end) waits on the MCP server: the user's hosted server (Render, see Handoff) has no Doc create/read or Gmail draft tool, so a decision is open. | `phase-5-deliver` (local) | Drafts to bhavyachadha256@gmail.com. Stop after Phase 5; don't start Phase 6 without the user. |
+| 5. Delivery | 🚧 Code complete and reviewed (2026-10-22): Tasks 5.1–5.3, the review fix pass, and Task 5.4 (the user's append-only hosted server; 461 tests). Checkpoint waits on the user: `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`, then `pulse doctor` and a live run. | `phase-5-deliver` (local) | Server: the user's gmail-gdocs-mcp on Render. **No Gmail draft** (server has no draft tool; user accepted). Stop after Phase 5; don't start Phase 6 without the user. |
 | 6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
@@ -33,7 +33,7 @@ Update this table whenever a task or phase changes state.
 **Start here (new session):**
 1. `git switch phase-5-deliver` (it contains Phases 3–5), `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`, `uv run pytest -q` (437 pass) and `uv run pulse eval --suite deterministic` (all pass).
 2. **Nothing is scheduled: the new chat owns the backfill.** The original chat's jobs (05:37 and 17:47 IST) were cancelled on 2026-10-22 at hand-over, so two chats never run or commit at once. Schedule them again in the new chat (see "Recreating the daily schedule" below) or run the command by hand once per UTC day. Check progress with `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`, then either run the resume command once per UTC day by hand or schedule it again (CronCreate, laptop awake): `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Stop when the status is `AGGREGATED`.
-3. **The Phase 5 review and fix pass are done** (2026-10-22). Next: the MCP server decision (see "MCP server" under Where things stand), then the Phase 5 checkpoint.
+3. **The Phase 5 review, fix pass and Task 5.4 are done** (2026-10-22). Next: the Phase 5 checkpoint, once the user has put `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`.
 4. Phase 6 has not started; don't start it without the user.
 
 
@@ -46,14 +46,14 @@ Update this table whenever a task or phase changes state.
 - **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. It is **not scheduled** right now: the original chat's jobs (05:37 and 17:47 IST) were cancelled at hand-over; the new chat must schedule it (session-only jobs that need the laptop awake and VS Code open) or run it by hand. Groq's daily limit may be a rolling 24 hours rather than a midnight reset: if a run right after 00:00 UTC stops at once with a per-day limit, run it again later that day; the local guard prevents overspending.
 - **Groq:** key in `.env` (git-ignored), verified 2026-10-22: both models available.
 - **Delivery decisions (user, 2026-10-22):** self-hosted Google Workspace MCP server, chosen as `workspace-mcp` (`uvx workspace-mcp --single-user --tools docs gmail`); drafts addressed to `bhavyachadha256@gmail.com`. Tool names in `config/mcp.yaml` stay placeholders until the authorised server lists them.
-- **MCP server (user, 2026-10-22, later):** the user wants to connect their own hosted server, `https://milestone-3-mcp-testing.onrender.com/mcp` (repo `github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing`, `gmail-gdocs-mcp`, Streamable HTTP, needs `Authorization: Bearer <MCP_AUTH_TOKEN>`). It is reachable. Its tools are `google_auth_status`, `gdocs_append_text` (append to an existing Doc) and `gmail_send_email` (sends; `gmail.send` scope only). It has **no** Doc create, Doc read or Gmail draft tool, so it can't meet the brief's "Gmail draft" item or our create/update/read-back design as-is; the user has been asked how to proceed. `pulse` also needs bearer-header support for `streamable_http`.
+- **MCP server (user, 2026-10-22, later):** the user wants to connect their own hosted server, `https://milestone-3-mcp-testing.onrender.com/mcp` (repo `github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing`, `gmail-gdocs-mcp`, Streamable HTTP, needs `Authorization: Bearer <MCP_AUTH_TOKEN>`). It is reachable. Its tools are `google_auth_status`, `gdocs_append_text` (append to an existing Doc) and `gmail_send_email` (sends; `gmail.send` scope only). It has **no** Doc create, Doc read or Gmail draft tool. **The user chose to adapt `pulse` to it as-is** (Task 5.4): append each week once to one running Doc, no Gmail draft (the brief's draft item stays unmet), never map the send tool. `pulse doctor` on 2026-10-22 reached the server and reported only the two missing user inputs.
 - **Evals:** `uv run pulse eval --suite deterministic` passes on the real data (free; run it on every commit).
 
 **Next steps (in order)**
 1. **Each day after 00:00 UTC:** resume the backfill until `AGGREGATED` (about 2 more days). Check `report.md` → Top themes: 3–5 themes, names ≤ 4 words, `actionable_unthemed_share` ≤ 0.20, no `broad_theme:` warning.
-2. ~~Phase 5 review~~ done 2026-10-22 (see the review block above the Phase 5 checkpoint). **MCP server decision** (user): extend the hosted server with create/read/draft tools, or adapt `pulse` to it.
+2. ~~Phase 5 review~~ and ~~the MCP server decision~~ done 2026-10-22 (review block and Task 5.4 above the Phase 5 checkpoint).
 3. **Phase 4 checkpoint:** once last week is labelled, `uv run pulse run --week 2026-W42 --dry-run` and read `pulse.md` in full (find each quote in the source, check for PII). On a day with no backfill, `uv run pulse eval --suite pulses`.
-4. **Google setup (user):** create a Google Cloud OAuth client (Desktop app) with the Docs, Drive and Gmail APIs enabled; put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` in `.env`; create a Drive folder and set `delivery.drive_folder_id`; authorise workspace-mcp once. Then fill `config/mcp.yaml` from the server's tool list and run `pulse doctor` (Phase 5 checkpoint).
+4. **MCP setup (user):** paste the server's `MCP_AUTH_TOKEN` into `.env` (the empty line is there), create the running Google Doc and set `delivery.doc_id` in `config/pulse.yaml`, then `uv run pulse doctor` until all `OK` (Phase 5 checkpoint).
 5. **Gold set (needs two human annotators):** `pulse eval --export-gold 200`, label, κ ≥ 0.70, then `pulse eval --suite classification`. Until then Phase 3's checkpoint stays open.
 6. **Merging:** phases merge into `main` in order (3, 4, 5) at their checkpoints, then tag and push, with the user's OK.
 
@@ -96,14 +96,13 @@ Update this table whenever a task or phase changes state.
 
 **Waiting on the user**
 - Two people to label the 200-review gold set (Phase 3 checkpoint); none available as of 2026-10-22.
-- The Google OAuth client, Drive folder and one-time workspace-mcp authorisation (Phase 5 checkpoint).
-- **How to use the hosted MCP server** (see "MCP server" above), plus its `MCP_AUTH_TOKEN` in `.env`.
+- `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` (the running Doc) in `config/pulse.yaml` (Phase 5 checkpoint).
 - **Whether to push** the local commits on `phase-3-themes`, `phase-4-pulse` and `phase-5-deliver` to GitHub (asked 2026-10-22, not yet answered). Never push `archive/full-history`.
 
 **User decisions from the 2026-10-22 session** (also in the ledger)
 - Build Phases 4–5 on the labels available while the backfill continues in the background; accept that the first pulse covers fewer weeks until it finishes.
 - No human annotators for now, so the gold set and E-CLS-1 wait; build on anyway.
-- Delivery through a **self-hosted** Google Workspace MCP server (not the Claude connectors); Gmail drafts to `bhavyachadha256@gmail.com`.
+- Delivery through a **self-hosted** Google Workspace MCP server (not the Claude connectors); Gmail drafts to `bhavyachadha256@gmail.com`. **Revised later that day:** the user's own hosted gmail-gdocs-mcp on Render, adapted to as-is: one running Doc, appended once per week; no Gmail draft (accepted gap).
 - Stop after Phase 5 is implemented; don't start Phase 6 without asking.
 - Prefers free options: wait for the daily reset rather than pay. Explain things in plain, non-technical language when asked "what" or "why".
 
@@ -113,7 +112,7 @@ Update this table whenever a task or phase changes state.
 - **For scheduled jobs to fire,** the laptop must be awake and plugged in with the lid open, and VS Code with that Claude session must stay open. To stop the Mac sleeping overnight: `caffeinate -i -s` in a Terminal (Ctrl+C in the morning). Data, `.env` and the 800 labels exist only on this laptop, so the backfill can't move to the cloud without uploading private data.
 - **Extra Groq keys don't help.** Groq's free limits are per organisation, so another key in the same account shares the same 200K tokens/day. Keys from extra accounts would likely break Groq's terms and would also need code changes (the daily usage ledger is per model, not per key). The legitimate faster option is Groq's paid Developer tier: the remaining ~1,377 reviews are roughly 250K tokens, estimated well under $1 on `gpt-oss-120b` (check current pricing), plus raising `llm.limits.tpd` in `config/pulse.yaml`. The user prefers waiting.
 - **Where the ~175 tokens per review go** (day 1: 16 batches of 50, ~8,700 tokens per batch): instructions, theme list and schema ~1,100; review text ~2,500; visible labels ~1,000; the model's hidden reasoning ~4,100 (~80 per review). Reasoning effort is already `low`. Only the first backfill is expensive: weekly runs add 115–274 reviews (~20–50K tokens).
-- **Reading workspace-mcp's real tool names** (needed for `config/mcp.yaml`; the project's docs don't list them): after the Google setup, run
+- **Reading an MCP server's tool names** (already done for the hosted server; kept for switching servers, e.g. to workspace-mcp over stdio): run
   ```bash
   uv run python - <<'EOF'
   from pathlib import Path
@@ -301,7 +300,7 @@ tests/fixtures/weeks/generate.py        4.5   seeded generator for 3 fixture dat
 | `pulse: PulseSettings` | `max_words=250`, `quotes=3`, `actions=3`, `summary_max_words=18`, `action_max_words=20`, `quote_max_words=30`, `rationale_max_words=25`, `quote_min_words=8`, `quote_pool_max_words=60`, `quote_candidates=30`, `evidence_per_theme=20`, `retries=2`, `min_theme_reviews=10` |
 | `monitoring` | `duplicate_share_warn=0.10`, `volume_change_warn=0.5`, `skipped_share_warn=0.05`, `unclassified_warn=0.01`, `cost_spike_factor=2.0`, `retries_warn=1` |
 | `evals` | `judge_model: str \| None = None`; `None` means `llm.model` |
-| `delivery` | `drive_folder_id`, `recipient`, `doc_title` |
+| `delivery` | `drive_folder_id`, `doc_id` (Task 5.4), `recipient`, `doc_title` |
 | `privacy` | `extra_patterns: list[str]` |
 | `retention` | `raw_days=14` |
 | `paths` | `db`, `runs`, `raw`, `mappings` |
@@ -2533,13 +2532,35 @@ Expected: all passed. This also meets E-DEL-1.
 > - **Coverage added:** `test_unreachable_server_fails_before_llm_spend`, `test_unverified_read_back_still_drafts`, `test_rerun_same_week_updates_doc_and_keeps_draft`.
 > - **Deferred to Phase 6 (in the Handoff):** exit code 0 on partial delivery; `--force`'s two meanings. **Not a defect:** E-DEL-1's 🔴 is its gate (blocking), not its state.
 
+### Task 5.4: The user's append-only hosted server (added 2026-10-22)
+
+The user chose their own hosted MCP server (`gmail-gdocs-mcp` on Render) and asked to adapt `pulse` to it as-is. It has `gdocs_append_text`, `google_auth_status` and `gmail_send_email`: no Doc create or read, and no draft.
+
+**Files:** `src/pulse/deliver/{mcp_client,docs}.py`, `src/pulse/stages/deliver.py`, `src/pulse/cli.py`, `src/pulse/config.py`, `config/{mcp,pulse}.yaml`, `.env.example`, `tests/stub_mcp.py`, `tests/fixtures/mcp_append_stub.yaml`, `tests/conftest.py` (`append_config`, `append_factory`).
+
+- [x] **Tests first** (RED, then GREEN; suite 461):
+  - `test_bearer_header_comes_from_env`: `server.auth_token_env` names the `.env` variable sent as `Authorization: Bearer …`; empty → `McpConfigError`.
+  - `test_unauthorised_google_account_is_reported`, `test_expired_google_auth_fails_before_llm_spend` (DEL-17).
+  - `test_append_server_appends_once_per_week` (DEL-16), `test_append_server_publishes_without_draft` (DEL-15, DEL-16).
+  - `test_doctor_checks_the_running_doc_for_an_append_server` (DEL-10, DEL-15), `test_repo_config_maps_the_hosted_append_server`, and `test_env_example_lists_every_mcp_server_variable` now covers `auth_token_env`.
+- [x] **Commit:** `feat: deliver through the user's append-only hosted MCP server`
+
+> **As built (2026-10-22):**
+> - **Transport:** `streamable_http` opens an `httpx` client with the bearer header (`create_mcp_http_client` + `streamable_http_client`); stdio is unchanged. `timeout_seconds: 120` for Render's cold start.
+> - **Modes by mapping:** `WorkspaceGateway.supports(op)`. If `append_doc` is mapped, `publish` calls `append_pulse` (title line, blank line, plain-text pulse) to `delivery.doc_id`, once per week (`doc_already_appended` on a re-run unless `--force`); the ledger is saved right after the append (DEL-9). Otherwise the create/update/read-back path of Tasks 5.2–5.3 runs unchanged. If `create_draft` isn't mapped, `draft` makes no call, reports "No Gmail draft …" and returns `PUBLISHED_DOC_ONLY`.
+> - **Auth pre-check:** if `auth_status` is mapped, `gateway_problem` calls it after `check_tools` and fails (`NotAuthorised`, with the server's `instructions`) unless the result has `"authorized": true`.
+> - **Doctor:** `delivery_config` checks only the settings the mapped operations use (`create_doc` → `drive_folder_id`, `append_doc` → `doc_id`, `create_draft` → `recipient`); `Deps` gained `mcp_config`.
+> - **Live probe (2026-10-22):** without a token the server answers "Unauthorized: send Authorization: Bearer <MCP_AUTH_TOKEN>"; `pulse doctor` reports `mcp_tools FAIL MCP_AUTH_TOKEN is not set` and `delivery_config FAIL … doc_id`. `gmail_send_email` is never mapped and `send` is refused by name anyway.
+> - **Known gap:** the brief's "Gmail draft via MCP" item is not met with this server (user's choice). Adding a draft tool to the server (scope `gmail.compose`) and mapping `create_draft` would close it with no `pulse` code change.
+
 ### Phase 5 checkpoint (manual end-to-end, E-DEL-2)
 
-- [ ] Fill in `config/mcp.yaml` with the chosen server's tool and argument names, and set `delivery.recipient` and `delivery.drive_folder_id`.
+- [x] Fill in `config/mcp.yaml` with the chosen server's tool and argument names (Task 5.4: the hosted append-only server).
+- [ ] Put `MCP_AUTH_TOKEN` in `.env`; create the running Doc and set `delivery.doc_id` (and `delivery.recipient`, unused while there's no draft tool).
 - [ ] Add the known Groww client-code, order-ID and ticket formats to `privacy.extra_patterns` (PII-7). Then re-run `uv run pulse ingest` and confirm that `[id]` appears in the scrubbed text wherever those formats occur.
 - [ ] `uv run pulse doctor`: every check prints `OK`.
-- [ ] `uv run pulse run --week 2026-W42`. One Doc appears in the folder with the correct title and content, and one draft appears addressed to the recipient, linking to the Doc.
-- [ ] `uv run pulse run --week 2026-W42` again. The same Doc is updated, and no second draft is created.
+- [ ] `uv run pulse run --week 2026-W42`. The week's section (title and pulse) appears once at the end of the running Doc, matching `pulse.md`; status `PUBLISHED_DOC_ONLY` with "No Gmail draft" in the report.
+- [ ] `uv run pulse run --week 2026-W42` again. Nothing is appended (`doc_already_appended`).
 - [ ] `git tag phase-5`
 
 ---
@@ -2791,6 +2812,6 @@ Copy the plist to `~/Library/LaunchAgents/`, then run `launchctl load ~/Library/
 | ≤250 words, scannable | 4.3 (V5) | E-PUL-1, E-PUL-2, H1 |
 | No PII in any artifact | 2.2, 2.3, 2.4, 4.1, 4.3 (V6), 6.1 | E-PII-1…3 |
 | Publish to Google Docs via MCP | 5.1, 5.2, 5.3 | E-DEL-1, E-DEL-2 |
-| Gmail draft to self or an alias via MCP | 5.1, 5.2, 5.3 | E-DEL-1, E-DEL-2 |
+| Gmail draft to self or an alias via MCP | 5.1, 5.2, 5.3 (**not met** with the chosen server: no draft tool, Task 5.4) | E-DEL-1, E-DEL-2 |
 | MCP-first; no direct Google APIs | 0.1 (dependency test), 5.1 | — |
 | Weekly cadence | 2.1 (ISO windows), 2.4 (`--week`), 6.3, 6.4 | M-RUN-1 |

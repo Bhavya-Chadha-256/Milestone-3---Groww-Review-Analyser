@@ -15,6 +15,7 @@ from pulse.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STUB_CONFIG = REPO_ROOT / "tests" / "fixtures" / "mcp_stub.yaml"
+APPEND_CONFIG = REPO_ROOT / "tests" / "fixtures" / "mcp_append_stub.yaml"
 
 
 @pytest.fixture
@@ -99,3 +100,16 @@ def stub_factory(config: McpConfig) -> GatewayFactory:
 @pytest.fixture
 def gateway_factory(stub_config: McpConfig) -> GatewayFactory:
     return stub_factory(stub_config)
+
+
+@pytest.fixture
+def append_config() -> McpConfig:
+    """An append-only server (like gmail-gdocs-mcp): one running Doc, `doc0`, already exists."""
+    stub_mcp.STATE.reset()
+    stub_mcp.STATE.docs["doc0"] = "Groww Review Pulse"
+    return load_mcp_config(APPEND_CONFIG)
+
+
+@pytest.fixture
+def append_factory(append_config: McpConfig) -> GatewayFactory:
+    return stub_factory(append_config)

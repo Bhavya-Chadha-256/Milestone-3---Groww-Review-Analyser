@@ -197,3 +197,36 @@ def test_precheck_warning_is_cleared_by_a_later_resume(
     resumed = deliver(tmp_settings, tmp_store, pulse_llm(), gateway_factory, from_stage="publish")
     assert resumed.status == RunStatus.DELIVERED
     assert "mcp_precheck_failed" not in (resumed.run_dir / "report.md").read_text()
+
+
+def with_running_doc(settings: Settings) -> Settings:
+    delivery = settings.delivery.model_copy(update={"doc_id": "doc0"})
+    return settings.model_copy(update={"delivery": delivery})
+
+
+def test_append_server_publishes_without_draft(
+    tmp_settings: Settings, tmp_store: Store, append_factory: GatewayFactory
+) -> None:  # DEL-15, DEL-16
+    seed(tmp_store)
+    settings = with_running_doc(tmp_settings)
+    out = deliver(settings, tmp_store, pulse_llm(), append_factory)
+    assert out.status == RunStatus.PUBLISHED_DOC_ONLY and STATE.drafts == {}
+    assert [tool for tool, _ in STATE.calls] == ["google_auth_status", "gdocs_append_text"]
+    assert "Groww Review Pulse — 2026-W42 (12–18 Oct)" in STATE.docs["doc0"]
+    assert "No Gmail draft" in (out.run_dir / "report.md").read_text()
+    later = datetime(2026, 10, 19, 6, tzinfo=UTC)
+    rerun = deliver(settings, tmp_store, pulse_llm(), append_factory, started_at=later)
+    assert rerun.status == RunStatus.PUBLISHED_DOC_ONLY
+    assert [tool for tool, _ in STATE.calls].count("gdocs_append_text") == 1
+    assert "doc_already_appended" in (rerun.run_dir / "report.md").read_text()
+
+
+def test_expired_google_auth_fails_before_llm_spend(
+    tmp_settings: Settings, tmp_store: Store, append_factory: GatewayFactory
+) -> None:  # DEL-17
+    seed(tmp_store)
+    STATE.authorized = False
+    llm = pulse_llm()
+    out = deliver(with_running_doc(tmp_settings), tmp_store, llm, append_factory)
+    assert out.status == RunStatus.FAILED and llm.calls == []
+    assert "not authorised" in (out.run_dir / "report.md").read_text()

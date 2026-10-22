@@ -298,6 +298,8 @@ A Jinja2 template merges the `PulseDraft`, the aggregates and the quotes into `p
 - **Body:** the plain-text render of the pulse (a Doc shows Markdown syntax literally). Only a pulse whose saved `validation.json` passed is ever published or drafted, even with `--from publish` or `--from draft`; `draft` also requires that the same run published the Doc (`delivery.json` in its run folder).
 - **Read-back:** after writing, the stage reads the Doc back through MCP and checks that the theme names and quote texts are present. On a mismatch it retries once, then marks the run `DELIVERY_UNVERIFIED` and still creates the draft.
 
+**Append-only servers [Decision, user, 2026-10-22]:** the chosen hosted server can only append to an existing Doc. When `config/mcp.yaml` maps `append_doc`, the stage appends `<title>` plus the plain-text pulse **once per week** to one running Doc (`delivery.doc_id`, created by hand). The ledger records the week right after the append, so a re-run skips with the warning `doc_already_appended` unless `--force` (DEL-16). There is no read tool, so there is no read-back: `doc_verified` means the server confirmed the append.
+
 ### 3.10 Gmail draft (MCP)
 
 - **To:** `recipient` from config (yourself or an alias).
@@ -305,6 +307,7 @@ A Jinja2 template merges the `PulseDraft`, the aggregates and the quotes into `p
 - **Body:** the full pulse as plain text, plus HTML if the server supports it, then a link to the Doc.
 - **Draft only.** The send tool is not on the allowlist (§6.3), so the pipeline cannot send mail.
 - **Idempotency:** the ledger stores `iso_week → draft_id`. Re-running the same week skips this step unless `--force` is passed.
+- **No draft tool [as built, 2026-10-22]:** when `config/mcp.yaml` maps no `create_draft` (the chosen hosted server has none), the stage makes no call, the report says "No Gmail draft", and the run ends `PUBLISHED_DOC_ONLY` (DEL-15). This leaves the brief's draft item unmet; the user accepted that.
 
 ---
 
@@ -426,7 +429,7 @@ All three modes are MCP-first. Mode A is the primary path because the model neve
 Different Workspace MCP servers name their tools differently. A config file maps our logical operations to the tool names on the chosen server. At startup the pipeline calls `list_tools()` and **fails fast**, before any LLM spend, if any mapped tool is missing.
 
 ```yaml
-# config/mcp.yaml (as built; tool names stay <placeholders> until the authorised server lists them)
+# config/mcp.yaml for a server with create/read/draft tools (the shape Tasks 5.1–5.3 were built for)
 server:
   transport: stdio                # or streamable_http with url:
   command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
@@ -440,7 +443,21 @@ operations:
 allowlist: [create_doc, update_doc, read_doc, create_draft]
 ```
 
-**Server [Decision, 2026-10-22]:** the self-hosted community server [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp), started by `pulse` over stdio. It runs Google's OAuth flow and keeps the tokens. A stdio server inherits only a few safe environment variables, so `server.env` lists the names it needs; their values live in `.env`.
+**Server [Decision, 2026-10-22, revised the same day]:** first the self-hosted community server [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp) over stdio (a stdio server inherits only a few safe environment variables, so `server.env` lists the names it needs). The user then chose their own hosted [gmail-gdocs-mcp](https://github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing) on Render, which the committed `config/mcp.yaml` maps:
+
+```yaml
+server:
+  transport: streamable_http
+  url: https://milestone-3-mcp-testing.onrender.com/mcp
+  auth_token_env: MCP_AUTH_TOKEN   # the .env variable sent as "Authorization: Bearer …"
+  timeout_seconds: 120             # Render's free tier sleeps; the first request can take a minute
+operations:
+  append_doc:  { tool: gdocs_append_text, args: {document: "{doc_id}", text: "{body}"}, requires_id: true, id_regex: '"document_id":…', url_regex: '"document_url":…' }
+  auth_status: { tool: google_auth_status, args: {} }
+allowlist: [append_doc, auth_status]
+```
+
+Its third tool, `gmail_send_email`, is never mapped (and its name is refused, §6.3). When `auth_status` is mapped, the pre-check and `pulse doctor` call it and fail before any LLM spend unless the server reports `"authorized": true` (DEL-17), which catches the 7-day refresh-token expiry of a Google app in Testing.
 
 A create call whose result has no ID matching `id_regex` fails rather than storing an empty ID (DEL-13). Optional arguments, such as the HTML body, are only sent when the server's tool accepts them (DEL-12).
 
@@ -641,7 +658,8 @@ evals:
   judge_model: qwen/qwen3.8-27b          # a different family from the pipeline model (§9)
   judge_majority_flip_rate: 0.05
 delivery:
-  drive_folder_id: <FOLDER_ID>
+  drive_folder_id: <FOLDER_ID>      # servers that create a Doc per week (create_doc)
+  doc_id: <DOC_ID>                  # append-only servers (append_doc): the one running Doc
   recipient: <self-or-alias@example.com>
   doc_title: "Groww Review Pulse — {iso_week} ({range})"
 ingest:
@@ -754,7 +772,7 @@ The build happens in seven phases (0–6). Each ends with a working command and 
 | Numbers in the pulse | Rendered from code; V7 rejects numerals in LLM text | Written by the LLM | No hallucinated statistics |
 | Docs layout | One Doc per ISO week | One running Doc | Stable link per week; idempotent updates |
 | Delivery | Programmatic MCP client (Mode A) | Claude API MCP connector; Claude Code connectors | Deterministic and testable with a stub server; Mode B kept for demos |
-| Workspace MCP server | Self-hosted `workspace-mcp` over stdio (user's choice, 2026-10-22) | Claude Code connectors (Mode B) | Fully automated weekly runs; needs a free Google Cloud OAuth client |
+| Workspace MCP server | The user's hosted `gmail-gdocs-mcp` on Render over Streamable HTTP (user's choice, 2026-10-22; first `workspace-mcp` over stdio) | `workspace-mcp` (create/read/draft); Claude Code connectors (Mode B) | The user's own server; but it can only append and send, so there is one running Doc and no Gmail draft |
 | Doc body | Plain-text render | Markdown | A Doc shows Markdown syntax literally, and escaped quotes would fail read-back |
 | Classification order | Newest reviews first | Oldest first | A budget-stopped backfill still covers the weeks the pulse reports on |
 | Model | Groq free tier: `openai/gpt-oss-120b` on all stages, `reasoning_effort` tuned per stage, strict structured outputs | Anthropic `claude-opus-5-5` (no key available); a local model (an 8 GB laptop is too small, and the project must not depend on one machine) | Free, needs only an API key on any machine, supports strict JSON schemas. The cost is rate limits: a first backfill of about three days. |
@@ -771,7 +789,7 @@ These carry over from [problemStatement.md §9](problemStatement.md), plus new o
 2. ~~**Play Store source:** how do we get Play reviews?~~ **Resolved 2026-10-21:** with `google-play-scraper` through `pulse fetch play-store` (§3.1). Third-party CSV exports are also accepted.
 3. ~~**Recipient:** the user's own address or a team alias?~~ **Resolved 2026-10-22:** `bhavyachadha256@gmail.com` (set `delivery.recipient` at the Phase 5 checkpoint).
 4. **Cadence:** manual or scheduled? If scheduled, where does the authorized MCP server run? (The current plan is local launchd after human review.)
-5. **MCP server:** ~~which server?~~ **Resolved 2026-10-22:** self-hosted `workspace-mcp` (§6.2). **Still open:** its exact tool and argument names for `config/mcp.yaml`, read from the server once the user's Google OAuth client is set up.
+5. **MCP server:** ~~which server?~~ **Resolved 2026-10-22:** the user's hosted `gmail-gdocs-mcp` (§6.2); its tools are mapped in `config/mcp.yaml`. **Known gap:** no Gmail draft (the server has no draft tool).
 6. ~~**Hindi / Hinglish reviews:** Hindi reviews are counted but not quoted. Should that change?~~ **Resolved 2026-10-21:** all languages are stored and counted, but only English and Latin-script Hinglish reviews are themed and quoted (§3.2, `ingest.languages`).
 7. **Window:** 8 or 12 weeks by default? (The current default is 12, with top 3 over the window.)
 

@@ -176,6 +176,7 @@ class EvalSettings(StrictModel):
 
 class DeliverySettings(StrictModel):
     drive_folder_id: str
+    doc_id: str
     recipient: str
     doc_title: str
 

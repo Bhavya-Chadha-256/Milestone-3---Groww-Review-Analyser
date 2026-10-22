@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from html import escape
 from typing import Any
 
-from pulse.deliver.docs import publish_doc
+from pulse.deliver.docs import append_pulse, publish_doc
 from pulse.deliver.gmail import create_draft
 from pulse.deliver.mcp_client import ToolCallFailed, WorkspaceGateway, run_with_gateway
 from pulse.models import Delivery, RunStatus
@@ -22,6 +22,7 @@ TOOL_FAILURE = (
     "then run: pulse run --week {week} --from {stage}"
 )
 SUBJECT = "Groww Review Pulse — {iso_week}"
+NO_DRAFT_TOOL = "No Gmail draft: the MCP server has no draft tool (config/mcp.yaml maps no create_draft)."
 Operation = Callable[[WorkspaceGateway], Awaitable[Any]]
 
 
@@ -53,26 +54,41 @@ def draft_stage(context: RunContext) -> RunStatus:
     if context.gateway_factory is None:
         return _no_gateway(context)
     try:
-        delivery = run_with_gateway(
-            context.gateway_factory, _draft_operation(context, delivery.doc_url or "")
-        )
+        drafted = run_with_gateway(context.gateway_factory, _draft_operation(context, delivery.doc_url or ""))
     except ToolCallFailed as error:  # the Doc is written; --from draft finishes the job (DEL-8)
         return _tool_failure(context, error, "draft", RunStatus.PUBLISHED_DOC_ONLY)
-    _record(context, delivery)
-    return RunStatus.DELIVERED if delivery.doc_verified else RunStatus.DELIVERY_UNVERIFIED
+    if drafted is None:  # DEL-15
+        _record(context, delivery)
+        context.report.sections["Delivery"] += f"\n- {NO_DRAFT_TOOL}"
+        return RunStatus.PUBLISHED_DOC_ONLY
+    _record(context, drafted)
+    return RunStatus.DELIVERED if drafted.doc_verified else RunStatus.DELIVERY_UNVERIFIED
 
 
 def _publish_operation(context: RunContext) -> Operation:
     ctx, settings = pulse_context(context), context.settings.delivery
     week = context.window.iso_week
 
+    title = settings.doc_title.format(iso_week=week, range=week_range(context.window))
+    body = render_text(ctx)  # plain text: a Doc shows Markdown syntax literally
+
     def publish(gateway: WorkspaceGateway) -> Awaitable[tuple[Delivery, list[str]]]:
+        if gateway.supports("append_doc"):  # an append-only server: one running Doc (DEL-16)
+            return append_pulse(
+                gateway,
+                context.store,
+                iso_week=week,
+                doc_id=settings.doc_id,
+                title=title,
+                body=body,
+                force=context.opts.force,
+            )
         return publish_doc(
             gateway,
             context.store,
             iso_week=week,
-            title=settings.doc_title.format(iso_week=week, range=week_range(context.window)),
-            body=render_text(ctx),  # plain text: a Doc shows Markdown syntax literally
+            title=title,
+            body=body,
             folder_id=settings.drive_folder_id,
             must_contain=[theme.name for theme in ctx.themes] + [quote.text for quote in ctx.quotes],
         )
@@ -83,8 +99,10 @@ def _publish_operation(context: RunContext) -> Operation:
 def _draft_operation(context: RunContext, url: str) -> Operation:
     ctx, week = pulse_context(context), context.window.iso_week
 
-    def draft(gateway: WorkspaceGateway) -> Awaitable[Delivery]:
-        return create_draft(
+    async def draft(gateway: WorkspaceGateway) -> Delivery | None:
+        if not gateway.supports("create_draft"):
+            return None
+        return await create_draft(
             gateway,
             context.store,
             iso_week=week,

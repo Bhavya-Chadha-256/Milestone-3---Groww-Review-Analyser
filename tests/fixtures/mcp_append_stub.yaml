@@ -1,0 +1,15 @@
+# An append-only server like gmail-gdocs-mcp, mapped onto tests/stub_mcp.py: no Doc create/read, no draft.
+server:
+  transport: stdio
+  command: [unused-in-tests]
+operations:
+  append_doc:
+    tool: gdocs_append_text
+    args: {document: "{doc_id}", text: "{body}"}
+    requires_id: true
+    id_regex: '"document_id":\s*"([^"]+)"'
+    url_regex: '"document_url":\s*"([^"]+)"'
+  auth_status:
+    tool: google_auth_status
+    args: {}
+allowlist: [append_doc, auth_status]

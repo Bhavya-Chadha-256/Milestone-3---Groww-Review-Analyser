@@ -1,7 +1,8 @@
 """Publish the week's pulse to one Google Doc per ISO week, idempotently (architecture.md §7, Task 5.2).
 
 The delivery ledger (`deliveries` table) is saved right after every create call, so a re-run updates the
-same Doc instead of making a second one (DEL-9).
+same Doc instead of making a second one (DEL-9). A server that can only append (no create or read) gets
+`append_pulse` instead: each week is appended once to one running Doc.
 """
 
 import json
@@ -36,6 +37,30 @@ async def publish_doc(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; h
     delivery = delivery.model_copy(update={"doc_verified": verified})
     store.save_delivery(delivery)
     return delivery, warnings
+
+
+async def append_pulse(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
+    gw: WorkspaceGateway,
+    store: Store,
+    *,
+    iso_week: str,
+    doc_id: str,
+    title: str,
+    body: str,
+    force: bool = False,
+) -> tuple[Delivery, list[str]]:
+    """The week's section appended to the running Doc, once: a re-run skips unless `force` (DEL-16).
+    With no read tool there is no read-back, so "verified" means the server confirmed the append."""
+    delivery = store.get_delivery(iso_week) or Delivery(iso_week=iso_week)
+    if delivery.doc_id and not force:
+        return delivery, ["doc_already_appended"]
+    result = await gw.call("append_doc", doc_id=doc_id, body=f"{title}\n\n{body}")
+    url = result.url or DOC_URL.format(doc_id=result.resource_id)
+    delivery = delivery.model_copy(
+        update={"doc_id": result.resource_id, "doc_url": url, "doc_verified": True}
+    )
+    store.save_delivery(delivery)  # immediately, so a crash after this can't append twice (DEL-9)
+    return delivery, []
 
 
 async def _write(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)

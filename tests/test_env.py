@@ -36,5 +36,6 @@ def test_env_example_lists_every_mcp_server_variable() -> None:  # CLAUDE.md: ev
     from pulse.deliver.mcp_client import load_mcp_config
 
     lines = (REPO / ".env.example").read_text().splitlines()
-    for name in load_mcp_config(REPO / "config" / "mcp.yaml").server.env:
+    server = load_mcp_config(REPO / "config" / "mcp.yaml").server
+    for name in [*server.env, *filter(None, [server.auth_token_env])]:
         assert f"{name}=" in lines, name

@@ -8,6 +8,7 @@ from test_cli import invoke
 from pulse import cli
 from pulse.cli import Deps, doctor_checks
 from pulse.config import Settings
+from pulse.deliver.mcp_client import McpConfig
 
 MODELS = ("openai/gpt-oss-120b", "qwen/qwen3.8-27b")
 
@@ -72,3 +73,15 @@ def test_doctor_reports_malformed_mcp_config(
     result = invoke(tmp_settings, tmp_path, "doctor")
     assert result.exit_code == 1 and "mcp_tools FAIL" in result.output and "allowlist" in result.output
     assert "Traceback" not in result.output
+
+
+def test_doctor_checks_the_running_doc_for_an_append_server(
+    settings: Settings, append_factory: GatewayFactory, append_config: McpConfig
+) -> None:  # DEL-10, DEL-15
+    deps = Deps(store=None, llm=groq_with(*MODELS), gateway_factory=append_factory, mcp_config=append_config)
+    ok, detail = results(settings, deps)["delivery_config"]
+    assert not ok and "doc_id" in detail and "recipient" not in detail
+    real = settings.delivery.model_copy(update={"doc_id": "1AbCdEf"})
+    found = results(settings.model_copy(update={"delivery": real}), deps)
+    assert found["delivery_config"][0] and "no Gmail draft" in found["delivery_config"][1]
+    assert found["mcp_tools"][0], found["mcp_tools"]

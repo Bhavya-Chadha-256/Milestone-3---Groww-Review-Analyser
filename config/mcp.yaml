@@ -1,33 +1,25 @@
-# Google Workspace MCP server and the mapping from our operations to its tools (architecture §7, Task 5.1).
-# Chosen server: workspace-mcp (github.com/taylorwilsdon/google_workspace_mcp), run locally over stdio.
-# It holds the Google OAuth tokens itself; this file holds no secrets. `env` lists the NAMES of variables
-# passed through to the server process (their values live in .env).
-# Tool names stay <placeholders> until `pulse doctor` lists the real ones (Phase 5 checkpoint).
-# `timeout_seconds` bounds every request; `not_found_regex` on read_doc tells "Doc deleted" (recreate it,
-# DEL-5) from any other error (raise it). Google's APIs answer 404 "Requested entity was not found."
+# Google Workspace MCP server and the mapping from our operations to its tools (architecture §6, Task 5.1).
+# Chosen server (user, 2026-10-22): the user's own gmail-gdocs-mcp, hosted on Render over Streamable HTTP
+# (github.com/Bhavya-Chadha-256/Milestone-3---MCP-Testing). It holds the Google OAuth tokens itself; this
+# file holds no secrets. `auth_token_env` names the .env variable sent as the bearer token.
+#
+# The server can only append to an existing Doc and send mail, so `pulse` appends each week's pulse once to
+# one running Doc (`delivery.doc_id` in config/pulse.yaml) and makes no Gmail draft: there is no draft tool,
+# and its send tool is never mapped (DEL-15, DEL-16). A server with create/read/draft tools maps
+# create_doc, update_doc, read_doc and create_draft instead (see architecture.md §6.2).
 server:
-  transport: stdio
-  command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
-  env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]
-  timeout_seconds: 60
+  transport: streamable_http
+  url: https://milestone-3-mcp-testing.onrender.com/mcp
+  auth_token_env: MCP_AUTH_TOKEN
+  timeout_seconds: 120  # Render's free tier sleeps when idle; the first request can take about a minute
 operations:
-  create_doc:
-    tool: <create_doc_tool>
-    args: {title: "{title}", content: "{body}", folder_id: "{folder_id}"}
+  append_doc:
+    tool: gdocs_append_text
+    args: {document: "{doc_id}", text: "{body}"}
     requires_id: true
-    id_regex: '<regex capturing the document id>'
-    url_regex: '<regex capturing the document url>'
-  update_doc:
-    tool: <update_doc_tool>
-    args: {document_id: "{doc_id}", content: "{body}"}
-  read_doc:
-    tool: <read_doc_tool>
-    args: {document_id: "{doc_id}"}
-    not_found_regex: '(?i)not found|404'
-  create_draft:
-    tool: <create_draft_tool>
-    args: {to: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}
-    optional_args: [html_body]
-    requires_id: true
-    id_regex: '<regex capturing the draft id>'
-allowlist: [create_doc, update_doc, read_doc, create_draft]
+    id_regex: '"document_id":\s*"([^"]+)"'
+    url_regex: '"document_url":\s*"([^"]+)"'
+  auth_status:
+    tool: google_auth_status
+    args: {}
+allowlist: [append_doc, auth_status]
