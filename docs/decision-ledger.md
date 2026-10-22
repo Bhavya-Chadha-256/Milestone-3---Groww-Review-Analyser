@@ -166,4 +166,5 @@ Task 5.3: Ruling: publish refuses unless the saved validation.json passed — `-
 Task 5.3: Ruling: run_with_gateway/gateway_problem unwrap the mcp client's task-group ExceptionGroup to the first real error — otherwise ToolCallFailed/MissingTool lose their messages — cost if wrong: a multi-error group reports only its first error.
 Phase 5 paused (2026-10-22) at the user's request ("stop after stage 5 is implemented"): Tasks 5.1–5.3 built; Phase 5 review not yet run; checkpoint needs the user's Google setup.
 Task 5.3: complete (commit 7dd41ee, tests: uv run pytest tests/test_pipeline_deliver.py tests/test_doctor.py → 11 passed; suite 437 passed)
+Docs refresh (2026-10-22, before a context switch): architecture.md (MCP §6 as built, §3.4/3.6/3.9/5.4 updates, §14 new decisions, §15 Q3/Q5 resolved, judge line fixed, layout), CLAUDE.md (commands, mcp 2.x + workspace-mcp, where-we-are), implementation.md (new-session start steps, stale plan lines annotated). No code change.
 ```

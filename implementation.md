@@ -23,12 +23,19 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC (scheduled in the Claude session, newest reviews first). **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
+| 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC, newest reviews first (scheduled only inside the original Claude session; a new session reschedules or runs it by hand). **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
 | 5. Delivery | 🚧 Code complete (2026-10-22): Tasks 5.1–5.3 built and tested against the in-process stub server (437 tests). Not yet reviewed. Checkpoint (manual end-to-end) waits on the user's Google OAuth client, Drive folder and the real tool names in `config/mcp.yaml`. | `phase-5-deliver` (local) | Self-hosted workspace-mcp; drafts to bhavyachadha256@gmail.com. Work paused here at the user's request (2026-10-22). |
 | 6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
+
+**Start here (new session):**
+1. `git switch phase-5-deliver` (it contains Phases 3–5), `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`, `uv run pytest -q` (437 pass) and `uv run pulse eval --suite deterministic` (all pass).
+2. **The backfill schedule did not carry over.** The original session's jobs (05:37 and 17:47 IST) were session-only. Check progress with `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`, then either run the resume command once per UTC day by hand or schedule it again (CronCreate, laptop awake): `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Stop when the status is `AGGREGATED`.
+3. **Next build step: the Phase 5 review** (one fresh-context review of `phase-4-pulse..phase-5-deliver`, then its fix pass). Work paused before it at the user's request.
+4. Phase 6 has not started; don't start it without the user.
+
 
 **Where things stand**
 - **Branches** (each built on the one before; none merged into `main` yet):
@@ -36,7 +43,7 @@ Update this table whenever a task or phase changes state.
   - `phase-3-themes`: Phase 3 code plus its fix pass. On GitHub up to `66c67b3`; the fix-pass commits are local.
   - `phase-4-pulse`: Phase 4 (quotes, compose, render, V1–V7, pulse stages, evals) plus its fix pass. Local.
   - `phase-5-deliver`: Tasks 5.1 (MCP gateway), 5.2 (Doc + draft) and 5.3 (delivery stages, pre-check, `pulse doctor`, README) built against `tests/stub_mcp.py`; rebased on `phase-4-pulse` after its fix pass. Local.
-- **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. In the original session this is scheduled (05:37 and 17:47 IST, session-only jobs that need the laptop awake and VS Code open); a new session must schedule or run it by hand.
+- **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. In the original session this is scheduled (05:37 and 17:47 IST, session-only jobs that need the laptop awake and VS Code open); a new session must schedule or run it by hand. Groq's daily limit may be a rolling 24 hours rather than a midnight reset: if a run right after 00:00 UTC stops at once with a per-day limit, run it again later that day; the local guard prevents overspending.
 - **Groq:** key in `.env` (git-ignored), verified 2026-10-22: both models available.
 - **Delivery decisions (user, 2026-10-22):** self-hosted Google Workspace MCP server, chosen as `workspace-mcp` (`uvx workspace-mcp --single-user --tools docs gmail`); drafts addressed to `bhavyachadha256@gmail.com`. Tool names in `config/mcp.yaml` stay placeholders until the authorised server lists them.
 - **Evals:** `uv run pulse eval --suite deterministic` passes on the real data (free; run it on every commit).
@@ -213,7 +220,7 @@ tests/conftest.py                       0.2   repo_root, fixtures_dir, settings,
 CLAUDE.md                               0.2   guide for coding agents working in this repo
 tests/factories.py                      2.1   make_review(), make_classification()
 tests/fakes.py                          3.1   FakeLLM
-tests/stub_mcp.py                       5.1   in-process FastMCP stub Workspace server
+tests/stub_mcp.py                       5.1   in-process stub Workspace server (mcp 2.x MCPServer)
 tests/fixtures/weeks/generate.py        4.5   seeded generator for 3 fixture datasets
 ```
 
@@ -2163,7 +2170,7 @@ Expected: all passed.
 | Dataset | Reviews | Shape | Expected outcome |
 |---|---|---|---|
 | `normal` | ~300 | Realistic spread | Produces a pulse |
-| `thin` | 120 | Only 2 themes populated | `INSUFFICIENT_DATA` (AGG-3) |
+| `thin` | 120 | Only 2 themes populated | `INSUFFICIENT_DATA` (AGG-3); live result is tracking only (Phase 4 review ruling) |
 | `burst` | ~300 | Plus 60 identical 1★ withdrawal reviews in the latest week | Produces a pulse with `duplicate_share` > 0.10 (AGG-8) |
 
   - `run_deterministic_suite(settings) -> Path`. Free, with no LLM calls. Covers:
@@ -2172,7 +2179,7 @@ Expected: all passed.
     - E-PII-3: red-team recall via the ingest stage
     - E-TAX-4 on the latest taxonomy
     - **Oracle and null baselines:** the golden pulse validates; each Task 4.3 mutation fails; real substrings pass `verify_quote` and altered ones fail.
-  - `run_pulses_suite(settings, llm) -> Path`. Paid. Runs the **live** pipeline with `--dry-run` on the `normal` and `burst` datasets (R=1 each), and checks that `thin` ends `INSUFFICIENT_DATA`. Records E-PUL-1, E-PUL-2 (first-attempt pass, from `validation_retries`), E-QUO-1 and E-ACT-5. Judge metrics are added to this suite in Task 6.1.
+  - `run_pulses_suite(settings, llm) -> Path`. Paid. Runs the **live** pipeline with `--dry-run` on the `normal` and `burst` datasets (R=1 each), and records whether `thin` ends `INSUFFICIENT_DATA` (as built: tracking metric `thin-insufficient-data`, not part of E-PUL-1). Records E-PUL-1, E-PUL-2 (first-attempt pass, from `validation_retries`), E-QUO-1 and E-ACT-5. Judge metrics are added to this suite in Task 6.1.
 
 - [x] **Step 1: Write the failing tests**
 
@@ -2250,7 +2257,7 @@ A fresh-context review returned "with fixes" (0 Critical, 6 Important, 8 Minor).
   - `ServerSpec(transport: Literal["stdio","streamable_http"], command, url)`
   - `OperationSpec(tool: str, args: dict[str, str], optional_args: list[str] = [], requires_id: bool = False, id_regex: str | None = None, url_regex: str | None = None)`
   - `McpConfig(server, operations, allowlist)` and `load_mcp_config(path) -> McpConfig`
-  - `ToolResult(id, url, text)`
+  - `ToolResult(id, url, text)` (as built: `ToolResult(resource_id, url, text)`)
   - Errors: `MissingTool`, `ForbiddenTool`, `ToolCallFailed`
   - `FORBIDDEN_TOOL_RE`
   - `WorkspaceGateway(session, cfg)` with `async check_tools()` and `async call(op, **fields) -> ToolResult`
@@ -2271,11 +2278,11 @@ A fresh-context review returned "with fixes" (0 Critical, 6 Important, 8 Minor).
   - `create_draft` lists `html` in `optional_args`.
   - Tool names stay `<placeholders>` until the server is chosen.
 
-**`tests/stub_mcp.py`** builds a FastMCP server named `stub-workspace` with these tools:
+**`tests/stub_mcp.py`** builds an MCP server (as built: mcp 2.x `MCPServer`) named `stub-workspace` with these tools:
 - `create_document(title, content, folder_id)`
 - `update_document(document_id, content)`
 - `get_document(document_id)`
-- `create_gmail_draft(to, subject, body, html_body="")`
+- `create_gmail_draft(to, subject, body, html_body="")` (as built: `recipient` instead of `to`)
 - `send_gmail_message(...)`, which exists so tests can prove it is refused
 
 The module `STATE` holds `docs`, `drafts`, `calls` (tool name plus arguments), `fail_next: set[str]`, `stale_reads: bool` and `omit_ids: bool`. Tests connect with `mcp.Client(stub_mcp.server)` (as built; see below).
@@ -2334,7 +2341,7 @@ Expected: all passed.
 - Consumes: 5.1; `Store`, `Delivery` (2.1); `normalize_quote_text` (4.1).
 - Produces:
   - `async publish_doc(gw, store, *, iso_week, title, body, folder_id, must_contain) -> tuple[Delivery, list[str]]`, where the list holds warnings
-  - `async create_draft(gw, store, *, iso_week, to, subject, text, html, force=False) -> Delivery`
+  - `async create_draft(gw, store, *, iso_week, to, subject, text, html, force=False) -> Delivery` (as built: `recipient` instead of `to`)
 
 **`publish_doc`:**
 1. If the ledger has a `doc_id`, call `update_doc`. If that raises `ToolCallFailed`, call `read_doc`. If the read also fails, the Doc is gone: call `create_doc`, replace `doc_id`, and add the warning `doc_recreated` (DEL-5). If the read succeeds, re-raise the original error.

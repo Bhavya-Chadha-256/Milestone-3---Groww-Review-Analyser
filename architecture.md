@@ -199,11 +199,12 @@ A new version gets new theme IDs, and the run report shows how old themes map to
 - **Incremental caching:** results are keyed by `(review_id, taxonomy_version, prompt_version)`. A weekly run only classifies reviews it hasn't seen before, or reviews that were edited.
 - **Transport:** synchronous Groq calls, paced by a rate limiter to stay within the free plan's tokens per minute. Results are saved after **every chunk**.
 - **Daily budget (LLM-13):** usage is persisted per UTC day. When the next chunk would exceed the day's budget, which keeps `llm.daily_token_reserve` back for quotes and compose, the stage stops cleanly. `pulse run --from classify` resumes from the cache the next day. A first backfill of about 2,200 reviews takes about three days: the observed cost is about 180 tokens per review, reasoning included.
-- **Interruption (OPS-6):** at most one chunk is lost; the cache holds the rest.
+- **Order:** pending reviews are sent **newest first** (decided 2026-10-22), so a backfill stopped by the daily budget has labelled the recent weeks the pulse reports on.
+- **Interruption (OPS-6):** at most one chunk is lost; the cache holds the rest. The cache key's prompt version is read from `classify.md`'s header, so editing the prompt reclassifies.
 - **Checks:**
   - Unknown review IDs in a response are dropped.
   - Missing IDs are re-queued once; if they're still missing, they are marked unclassified.
-  - A response that hits `max_tokens` causes its chunk to be split in half and retried.
+  - A response that hits `max_tokens`, or a chunk too large for the per-minute limit (`RequestTooLarge`), causes its chunk to be split in half and retried.
 
 ### 3.5 Aggregate & rank (code)
 
@@ -233,8 +234,8 @@ The ranking is computed in code and passed to the LLM as fixed input. All number
 There is one quote per top theme, so 3 quotes in total.
 
 1. **Candidates:** reviews in that theme that are 8–60 words long, not duplicates, in English or Latin-script Hinglish, and free of placeholders. Reviews from the latest week, with ratings typical of the theme, come first. Up to 30 candidates are sampled.
-2. **Pick:** Claude chooses the most representative review. It returns `{review_id, quote}`, where `quote` must be a **contiguous substring** of that review's scrubbed text, at most 30 words. The prompt also asks it to prefer spans without people's names and to avoid profanity.
-3. **Verification (code):** after normalizing whitespace and curly quotes on both sides, the stage checks that the quote is a substring of the review text. A failed check goes back to the model with the error, up to 2 times. If it still fails, the stage falls back to the first sentence of a pool review that passes the checks. If no candidate exists at all, the run fails with `VALIDATION_FAILED` (QUO-3).
+2. **Pick:** the model chooses the most representative review. It returns `{k, quote}` (the review's short key, mapped back to `review_id` in code), where `quote` must be a **contiguous substring** of that review's scrubbed text, at most 30 words. The prompt also asks it to prefer spans without people's names and to avoid profanity.
+3. **Verification (code):** after normalizing whitespace and curly quotes on both sides, the stage checks that the quote is a substring of the review text that **starts and ends on word boundaries** (so "able" never matches inside "unable") and is at most 30 words **as the validator counts them** (`count_words`). The stored quote has single spaces. A failed check goes back to the model with the error, up to 2 times. If it still fails, the stage falls back to the first sentence of a pool review that passes the checks. If no candidate exists at all, the run fails with `VALIDATION_FAILED` (QUO-3).
 
 The model only chooses spans; it never writes a quote. That is why "no invented wording" holds by construction rather than by prompt.
 
@@ -293,6 +294,7 @@ A Jinja2 template merges the `PulseDraft`, the aggregates and the quotes into `p
 
 - **Idempotency:** the run ledger stores `iso_week → doc_id`, saved immediately after each create call. If the week already has a Doc, the stage replaces its content instead of creating a duplicate.
 - **Deleted Docs:** if the stored Doc no longer exists (someone deleted it), the stage creates a new one and updates the ledger (DEL-5).
+- **Body:** the plain-text render of the pulse (a Doc shows Markdown syntax literally). Only a pulse whose saved `validation.json` passed is ever published, even with `--from publish`.
 - **Read-back:** after writing, the stage reads the Doc back through MCP and checks that the theme names and quote texts are present. On a mismatch it retries once, then marks the run `DELIVERY_UNVERIFIED` and still creates the draft.
 
 ### 3.10 Gmail draft (MCP)
@@ -386,12 +388,12 @@ Every LLM stage returns JSON that matches a schema. It is sent as `response_form
 | `finish_reason == "content_filter"` | `LLMRefusal`; the chunk is retried once, split in half (LLM-1) |
 | Served by an unexpected model | The serving model is recorded for each stage, shown in the report, and flagged in eval results (LLM-11) |
 | `finish_reason == "length"` | Split the chunk in half and retry |
-| 429 rate limit | Wait for `retry-after`, then retry (up to 3 attempts). The rate limiter paces calls so this is rare (LLM-10). |
-| 5xx / connection errors | The SDK's built-in retries, then the stage fails. It can be resumed with `--from <stage>`. |
-| Schema-invalid output | Re-ask once, with the validation error included. Then fail the chunk. |
+| 429 rate limit | Wait for `retry-after`, then retry (up to 3 attempts, no wait after the last). A `retry-after` over 60 s or a per-day message means the provider's daily quota is used: stop like the daily budget (LLM-13). The rate limiter paces calls so this is rare (LLM-10). |
+| 5xx / connection errors | Retried by `GroqLLM` (3 attempts); the SDK's own retries are off so every retry is paced and counted. Then the stage fails and can be resumed with `--from <stage>`. |
+| Schema-invalid output | Re-ask once, with the validation error included. Then fail the chunk. In compose, a refused, truncated or invalid answer is retried up to `pulse.retries` times, then the run ends `VALIDATION_FAILED`. |
 | Missing or extra review keys | Re-queue the missing keys once, drop the unknown ones, and log both counts |
 | Process dies mid-classification | Results are saved after every chunk; the next run sends only pending reviews (OPS-6) |
-| Daily token budget reached | Stop before sending; the run reports `daily_token_budget` and resumes with `--from classify` the next day (LLM-13) |
+| Daily token budget reached | Stop before sending; the run reports `daily_token_budget` with the exact command (`pulse run --week <week> --from <stage> --until <stage>`) to resume after 00:00 UTC (LLM-13). This applies to discover, classify, quotes, compose and validate. |
 
 ### 5.5 Token budget (estimate, measure on the first run)
 
@@ -411,7 +413,7 @@ At 200K tokens a day, the estimate gave **two days** for the first backfill. **O
 
 | Mode | How it works | Use |
 |---|---|---|
-| **A. Programmatic MCP client (primary)** | The pipeline uses the official `mcp` Python SDK (`ClientSession`) to connect to a Google Workspace MCP server, over stdio or streamable HTTP. It calls specific tools with fixed arguments. | Production runs: deterministic, testable, no model in the delivery loop |
+| **A. Programmatic MCP client (primary)** | The pipeline uses the official `mcp` Python SDK (2.x: `mcp.Client`) to connect to a Google Workspace MCP server, over stdio or streamable HTTP. It calls specific tools with fixed arguments. | Production runs: deterministic, testable, no model in the delivery loop |
 | B. Claude-orchestrated via Claude Code connectors | The pipeline writes `runs/<id>/pulse.md` (`pulse run --dry-run`). A Claude Code session then publishes it using the claude.ai Google Drive and Gmail connectors. | Demos and the course environment, when no self-hosted MCP server is set up |
 | C. Claude API MCP connector | Pass `mcp_servers` plus an `mcp_toolset` (beta `mcp-client-2025-11-20`) and let Claude call the tools. | Not used. It needs a publicly reachable MCP server and makes delivery depend on the model. |
 
@@ -422,24 +424,26 @@ All three modes are MCP-first. Mode A is the primary path because the model neve
 Different Workspace MCP servers name their tools differently. A config file maps our logical operations to the tool names on the chosen server. At startup the pipeline calls `list_tools()` and **fails fast**, before any LLM spend, if any mapped tool is missing.
 
 ```yaml
-# config/mcp.yaml
+# config/mcp.yaml (as built; tool names stay <placeholders> until the authorised server lists them)
 server:
-  transport: stdio                # or streamable_http
-  command: ["<workspace-mcp-server-command>"]
-  # url: https://localhost:8000/mcp
+  transport: stdio                # or streamable_http with url:
+  command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
+  env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]   # names only; values in .env
 operations:
-  create_doc:   { tool: "<docs_create_tool>", args: {...}, requires_id: true, id_regex: "...", url_regex: "..." }
-  update_doc:   { tool: "<docs_update_tool>", args: {...} }
-  read_doc:     { tool: "<docs_read_tool>", args: {...} }
-  create_draft: { tool: "<gmail_create_draft_tool>", args: {...}, optional_args: [html], requires_id: true, id_regex: "..." }
+  create_doc:   { tool: "<create_doc_tool>", args: {title: "{title}", content: "{body}", folder_id: "{folder_id}"}, requires_id: true, id_regex: "...", url_regex: "..." }
+  update_doc:   { tool: "<update_doc_tool>", args: {document_id: "{doc_id}", content: "{body}"} }
+  read_doc:     { tool: "<read_doc_tool>", args: {document_id: "{doc_id}"} }
+  create_draft: { tool: "<create_draft_tool>", args: {to: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}, optional_args: [html_body], requires_id: true, id_regex: "..." }
 allowlist: [create_doc, update_doc, read_doc, create_draft]
 ```
+
+**Server [Decision, 2026-10-22]:** the self-hosted community server [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp), started by `pulse` over stdio. It runs Google's OAuth flow and keeps the tokens. A stdio server inherits only a few safe environment variables, so `server.env` lists the names it needs; their values live in `.env`.
 
 A create call whose result has no ID matching `id_regex` fails rather than storing an empty ID (DEL-13). Optional arguments, such as the HTML body, are only sent when the server's tool accepts them (DEL-12).
 
 ### 6.3 Safety rules
 
-- **Allowlist only.** The pipeline can only call the mapped operations above. Any tool whose name matches `send|share|delete|trash|permission|remove` is refused, even if it is mapped by mistake.
+- **Allowlist only.** The pipeline can only call the mapped operations above. Any tool whose name matches `send|share|delete|trash|remove|permission|publish|forward` is refused, even if it is mapped by mistake.
 - **No credentials in our code.** The MCP server runs its own OAuth consent flow and keeps its own tokens. Our config holds a server command or URL and nothing more.
 - **Every call is logged.** The tool name, argument names, the result ID and the latency go into the logs. Document bodies are not logged.
 
@@ -447,7 +451,7 @@ A create call whose result has no ID matching `id_regex` fails rather than stori
 
 | Failure | Behavior |
 |---|---|
-| MCP server unreachable, or a mapped tool is missing | Fail before any LLM spend. Startup health check: `pulse doctor` |
+| MCP server unreachable, or a mapped tool is missing | Fail before any LLM spend (a pre-check runs before any stage when the run includes `publish`). Health check: `pulse doctor` |
 | Placeholder recipient or folder in config | `pulse doctor` fails (DEL-10) |
 | Doc created but draft fails | Status `PUBLISHED_DOC_ONLY`. `--from draft` resumes and reuses `doc_id`. |
 | Stored Doc was deleted | Recreate it, update the ledger, warn `doc_recreated` |
@@ -660,22 +664,22 @@ paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings
 │   └── mappings/                 # app_store_feed.yaml, play_store_feed.yaml (our raw exports), generic.yaml (third-party exports)
 ├── src/pulse/
 │   ├── cli.py                    # pulse fetch | raw | ingest | run | doctor | rediscover | eval
-│   ├── acquire/                  # app_store_feed (Apple public feed), raw_export
+│   ├── acquire/                  # app_store_feed (Apple public feed), play_store, raw_export
 │   ├── pipeline.py               # RunContext, stage registry, resume, run lock
-│   ├── config.py · models.py · timeutil.py · store.py · monitors.py
+│   ├── config.py · models.py · timeutil.py · store.py (monitors.py in Phase 6)
 │   ├── ingest/                   # mapping, base, file_import, normalize
 │   ├── privacy/scrub.py
 │   ├── llm/                      # client, schema, discover, classify, quotes, compose, prompts/
 │   ├── analysis/                 # sample, aggregate
-│   ├── stages/                   # themes, pulse, deliver
+│   ├── stages/                   # ingest, themes, pulse, deliver
 │   ├── report/                   # run_report, words, render, validate, templates/
 │   ├── deliver/                  # mcp_client, docs, gmail
-│   └── evals/                    # metrics, runner, gold, judge, judges/*.md, suites/
+│   └── evals/                    # metrics, runner, gold, oracle (validator baselines), suites/ (classification, deterministic, pulses); judges in Phase 6
 ├── evals/                        # datasets only
 │   ├── gold/ · redteam/ · stability/ · calibration/ · human/
 │   └── results/                  # git-ignored
 ├── ops/launchd/                  # weekly schedule
-├── tests/                        # incl. fakes.py, stub_mcp.py, fixtures/weeks/generate.py
+├── tests/                        # incl. fakes.py, stub_mcp.py (in-process MCPServer), fixtures/weeks/generate.py
 ├── data/                         # git-ignored
 └── runs/                         # git-ignored
 ```
@@ -745,7 +749,10 @@ The build happens in seven phases (0–6). Each ends with a working command and 
 | Numbers in the pulse | Rendered from code; V7 rejects numerals in LLM text | Written by the LLM | No hallucinated statistics |
 | Docs layout | One Doc per ISO week | One running Doc | Stable link per week; idempotent updates |
 | Delivery | Programmatic MCP client (Mode A) | Claude API MCP connector; Claude Code connectors | Deterministic and testable with a stub server; Mode B kept for demos |
-| Model | Groq free tier: `openai/gpt-oss-120b` on all stages, `reasoning_effort` tuned per stage, strict structured outputs | Anthropic `claude-opus-5-5` (no key available); a local model (an 8 GB laptop is too small, and the project must not depend on one machine) | Free, needs only an API key on any machine, supports strict JSON schemas. The cost is rate limits: a two-day first backfill. |
+| Workspace MCP server | Self-hosted `workspace-mcp` over stdio (user's choice, 2026-10-22) | Claude Code connectors (Mode B) | Fully automated weekly runs; needs a free Google Cloud OAuth client |
+| Doc body | Plain-text render | Markdown | A Doc shows Markdown syntax literally, and escaped quotes would fail read-back |
+| Classification order | Newest reviews first | Oldest first | A budget-stopped backfill still covers the weeks the pulse reports on |
+| Model | Groq free tier: `openai/gpt-oss-120b` on all stages, `reasoning_effort` tuned per stage, strict structured outputs | Anthropic `claude-opus-5-5` (no key available); a local model (an 8 GB laptop is too small, and the project must not depend on one machine) | Free, needs only an API key on any machine, supports strict JSON schemas. The cost is rate limits: a first backfill of about three days. |
 | Eval judge | `qwen/qwen3.8-27b` (a different family); binary per-criterion questions; must pass human calibration | The pipeline model as its own judge; 1–5 scores | Free, with its own quota, and less self-preference. Binary questions are easier to calibrate. |
 | Build order | Seven phases (0–6), each ending in a working command, built on phase branches | One continuous task list | Each phase can be demoed and checked before the next one starts |
 
@@ -757,10 +764,10 @@ These carry over from [problemStatement.md §9](problemStatement.md), plus new o
 
 1. ~~**App Store:** in scope, and what is the iOS app ID?~~ **Resolved 2026-10-21:** ID `1404871703`, fetched through the public feed. Its ~500-review cap is accepted, and weekly fetches build up history (§3.1).
 2. ~~**Play Store source:** how do we get Play reviews?~~ **Resolved 2026-10-21:** with `google-play-scraper` through `pulse fetch play-store` (§3.1). Third-party CSV exports are also accepted.
-3. **Recipient:** the user's own address or a team alias?
+3. ~~**Recipient:** the user's own address or a team alias?~~ **Resolved 2026-10-22:** `bhavyachadha256@gmail.com` (set `delivery.recipient` at the Phase 5 checkpoint).
 4. **Cadence:** manual or scheduled? If scheduled, where does the authorized MCP server run? (The current plan is local launchd after human review.)
-5. **MCP server:** which Google Workspace MCP server will we use (course-provided or a community server)? What are its exact tool names, for `config/mcp.yaml`?
+5. **MCP server:** ~~which server?~~ **Resolved 2026-10-22:** self-hosted `workspace-mcp` (§6.2). **Still open:** its exact tool and argument names for `config/mcp.yaml`, read from the server once the user's Google OAuth client is set up.
 6. ~~**Hindi / Hinglish reviews:** Hindi reviews are counted but not quoted. Should that change?~~ **Resolved 2026-10-21:** all languages are stored and counted, but only English and Latin-script Hinglish reviews are themed and quoted (§3.2, `ingest.languages`).
 7. **Window:** 8 or 12 weeks by default? (The current default is 12, with top 3 over the window.)
 
-**Resolved:** the eval judge model is the same as the pipeline model (§9, §14).
+**Resolved:** eval judges use `qwen/qwen3.8-27b`, a different family from the pipeline model (§9, §14).
