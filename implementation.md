@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.2 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.3 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
@@ -1486,7 +1486,7 @@ Expected: all passed.
 - It contains `DATA_RULE`. The reviews go in the user message.
 - Only **eligible** reviews are ever passed in (Task 3.5).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_schema_enum_is_taxonomy_ids_plus_unthemed(): ...
@@ -1508,21 +1508,27 @@ def test_classification_stops_at_daily_budget_and_resumes(tmp_path):   # LLM-13
 def test_classify_prompt_contains_data_rule_and_taxonomy(tmp_path): ...   # also the praise rule and sentiment definitions
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_classify.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `classify.py` and `classify.md`**
+- [x] **Step 3: Implement `classify.py` and `classify.md`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_classify.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: classify reviews incrementally within the daily token budget"`
+
+> **As built (2026-10-22):**
+> - **Two kinds of unlabelled review:** *skipped* (the model left the key out) is re-queued once (LLM-4). *Failed* (refused after its one split retry, truncated as a single review, or schema-invalid after the re-ask) is not retried again. Both end in `unclassified`.
+> - **Token estimate:** `estimate_classify_tokens` is `chunks × system_tokens + pending × 50 + min(pending × 30, chunks × max_tokens)`, which gives about 226K for the 2,177-review backfill. `system_tokens(taxonomy)` gives the system-prompt estimate.
+> - **System prompt:** `classify.md` plus a JSON catalogue of the taxonomy's themes.
+> - **Extra tests:** `test_single_review_that_truncates_is_unclassified`, `test_estimate_classify_tokens_scales_with_chunks`.
 
 **Expected load (D7):** the first real run has about 2,177 pending reviews, which is 44 chunks and about 240K tokens. At 200K tokens a day, minus the 20K reserve, it finishes over **two days**. The second day is `pulse run --from classify`, and the cache keeps the first day's work. Pacing is about 1–2 requests a minute, so about 30 minutes of classification a day. Later weeks add 115–274 reviews, about 15–30K tokens, in one sitting.
 
