@@ -17,7 +17,7 @@ from pulse.llm.quotes import (
     select_quotes,
     verify_quote,
 )
-from pulse.llm.schema import LLMRequest
+from pulse.llm.schema import LLMRequest, RequestTooLarge
 from pulse.models import Classification, Review
 from pulse.timeutil import window_for_week
 
@@ -239,3 +239,14 @@ def test_quote_whitespace_is_collapsed() -> None:  # QUO-9: a span across a para
         FakeLLM({"quotes": across_paragraphs}), [stats("withdrawals")], reviews, labels, WINDOW, LIMITS
     )
     assert fallbacks == 0 and quotes[0].text == "three days. Support never replies"
+
+
+def test_request_too_large_counts_as_a_failed_pick() -> None:  # LLM-12
+    reviews, labels = labelled({"withdrawals": themed_reviews()["withdrawals"]})
+
+    def too_large(req: LLMRequest) -> BaseModel:
+        raise RequestTooLarge("a 9000-token request can never fit limits.tpm (8000)")
+
+    llm = FakeLLM({"quotes": too_large})
+    quotes, fallbacks = select_quotes(llm, [stats("withdrawals")], reviews, labels, WINDOW, LIMITS)
+    assert fallbacks == 1 and len(llm.calls) == 1 + LIMITS.retries and quotes[0].theme_id == "withdrawals"

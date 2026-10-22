@@ -4,19 +4,44 @@ Validation decides what re-runs: quote or privacy problems redo quotes and compo
 compose with the gate messages as feedback, up to `pulse.retries` times.
 """
 
+import functools
+from collections.abc import Callable
 from dataclasses import asdict
 
 from pulse.analysis.aggregate import Aggregates, ThemeStats, rank_top
 from pulse.llm.compose import PulseDraft, compose_pulse, evidence_sample
 from pulse.llm.quotes import QuoteUnavailable, candidate_pool, select_quotes
+from pulse.llm.schema import DailyBudgetExhausted, LLMRefusal, LLMSchemaError, LLMTruncated, RequestTooLarge
 from pulse.models import Quote, RunStatus
 from pulse.pipeline import RunContext, register_stage
 from pulse.report.render import build_context, render_markdown
 from pulse.report.validate import ValidationReport, route, validate
-from pulse.stages.themes import eligible_reviews, stage_labels, stage_llm, stage_taxonomy
+from pulse.stages.themes import budget_failure, eligible_reviews, stage_labels, stage_llm, stage_taxonomy
+
+COMPOSE_ERRORS = (LLMRefusal, LLMTruncated, LLMSchemaError, RequestTooLarge)
+StageFunc = Callable[[RunContext], RunStatus]
+
+
+class ComposeFailed(Exception):
+    pass
+
+
+def budget_guarded(stage: StageFunc) -> StageFunc:
+    """The daily budget running out ends the run FAILED with the exact resume command (LLM-13)."""
+
+    @functools.wraps(stage)
+    def guarded(context: RunContext) -> RunStatus:
+        try:
+            return stage(context)
+        except DailyBudgetExhausted:
+            message = f"daily_token_budget: {context.stage} could not finish"
+            return budget_failure(context, context.stage, message, section="Validation")
+
+    return guarded
 
 
 @register_stage("quotes")
+@budget_guarded
 def quotes_stage(context: RunContext) -> RunStatus:
     try:
         _select_quotes(context, attempt=0)
@@ -26,12 +51,17 @@ def quotes_stage(context: RunContext) -> RunStatus:
 
 
 @register_stage("compose")
+@budget_guarded
 def compose_stage(context: RunContext) -> RunStatus:
-    _compose(context, feedback=None)
+    try:
+        _compose(context, feedback=None)
+    except ComposeFailed as error:
+        return _compose_failure(context, error)
     return RunStatus.COMPOSED
 
 
 @register_stage("validate")
+@budget_guarded
 def validate_stage(context: RunContext) -> RunStatus:
     limits = context.settings.pulse
     retries = 0
@@ -55,7 +85,11 @@ def _redo(context: RunContext, report: ValidationReport, attempt: int) -> bool:
         except QuoteUnavailable as error:
             _quote_failure(context, error)
             return False
-    _compose(context, feedback=[f"{issue.code}: {issue.message}" for issue in report.issues])
+    try:
+        _compose(context, feedback=[f"{issue.code}: {issue.message}" for issue in report.issues])
+    except ComposeFailed as error:
+        _compose_failure(context, error)
+        return False
     return True
 
 
@@ -90,12 +124,38 @@ def _compose(context: RunContext, feedback: list[str] | None) -> PulseDraft:
         )
         for stats in top
     }
-    draft = compose_pulse(
-        stage_llm(context), top, _aggregates(context), _quotes(context), evidence, taxonomy, feedback=feedback
-    )
+    draft = _ask_compose(context, top, evidence, feedback)
     context.state["draft"] = draft
     context.save_artifact("pulse_draft.json", draft)
     return draft
+
+
+def _ask_compose(
+    context: RunContext, top: list[ThemeStats], evidence: dict, feedback: list[str] | None
+) -> PulseDraft:
+    """A refused, truncated or invalid answer is a failed attempt, retried up to `pulse.retries` times."""
+    attempts = 1 + context.settings.pulse.retries
+    failures = []
+    for _ in range(attempts):
+        try:
+            return compose_pulse(
+                stage_llm(context),
+                top,
+                _aggregates(context),
+                _quotes(context),
+                evidence,
+                stage_taxonomy(context),
+                feedback=feedback,
+            )
+        except COMPOSE_ERRORS as error:
+            failures.append(type(error).__name__)
+    raise ComposeFailed(f"compose failed after {attempts} attempts ({', '.join(failures)})")
+
+
+def _compose_failure(context: RunContext, error: ComposeFailed) -> RunStatus:
+    context.report.sections["Validation"] = f"{error}; nothing can be published this week."
+    context.report.warnings.append("compose_failed")
+    return RunStatus.VALIDATION_FAILED
 
 
 def _check(context: RunContext) -> ValidationReport:

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from pulse.analysis.aggregate import ThemeStats
 from pulse.config import PulseSettings
 from pulse.llm.prompts import load_prompt, reviews_json
-from pulse.llm.schema import LLMRefusal, LLMRequest, LLMSchemaError, LLMTruncated
+from pulse.llm.schema import LLMRefusal, LLMRequest, LLMSchemaError, LLMTruncated, RequestTooLarge
 from pulse.models import Classification, Quote, Review
 from pulse.privacy.scrub import PLACEHOLDER_RE
 from pulse.report.words import count_words
@@ -138,7 +138,7 @@ def _ask(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
         prompt = user + REASK_SUFFIX.format(error=error) if error else user
         try:
             pick = llm.structured(LLMRequest("quotes", system, prompt, QuotePick))
-        except (LLMRefusal, LLMTruncated, LLMSchemaError) as failure:
+        except (LLMRefusal, LLMTruncated, LLMSchemaError, RequestTooLarge) as failure:
             error = f"the response failed ({failure})"
             continue
         error = _pick_error(pick, keys, by_id, limits)

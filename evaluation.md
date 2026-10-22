@@ -105,7 +105,7 @@ Judge metrics stay ⚪ until their family is calibrated (§7.3).
 
 | ID | Metric | Definition | Grader | Target | Gate |
 |---|---|---|---|---|---|
-| E-PUL-1 | Gate pass | V1–V7 pass on the final pulse for `normal` and `burst`, **and** `thin` ends `INSUFFICIENT_DATA` | code | 100% | 🔴 |
+| E-PUL-1 | Gate pass | V1–V7 pass on the final pulse for `normal` and `burst`. `thin` ending `INSUFFICIENT_DATA` is recorded separately as tracking (`thin-insufficient-data`): a live discovery must emit at least 3 themes and may populate a third, which then publishes with a low-sample note (decided 2026-10-22, Phase 4 review). | code | 100% | 🔴 |
 | E-PUL-2 | First-attempt pass | Share of pulses that pass V1–V7 with **no** compose or quote retry (`validation_retries == 0`). The word-count proxy for "scan in minutes": ≤250 words is about 1–1.5 minutes at 200 words per minute. | code | ≥ 80% | 🟡 |
 | E-SUM-1 | Faithfulness (`summaries/faithful`) | Per summary: *"Is every claim in this summary supported by at least one review in the evidence sample?"* | judge | ≥ 95% | 🟡 |
 | E-SUM-2 | Specificity (`summaries/specific`) | Per summary: *"Does it name a concrete problem (e.g. 'withdrawals stuck after T+1') rather than a generic one ('users unhappy')?"* | judge | ≥ 90% | 🟡 |

@@ -191,6 +191,8 @@ def test_pulses_suite_records_first_attempt_pass(
     assert found["E-PUL-1"]["value"] == 1.0 and found["E-PUL-2"]["value"] == 0.5
     assert found["E-QUO-1"]["value"] == 1.0 and found["E-ACT-5"]["value"] == 1.0
     assert found["burst-duplicate-share"]["value"] > 0.10
+    thin = found["thin-insufficient-data"]
+    assert (thin["value"], thin["gate"]) == (1.0, "tracking")
     cases = [json.loads(line) for line in (out / "cases.jsonl").read_text().splitlines()]
     assert {case["case_id"]: case["status"] for case in cases} == {
         "normal": "VALIDATED",

@@ -8,7 +8,7 @@ from fakes import FakeLLM
 from pydantic import BaseModel
 
 from pulse.config import Settings
-from pulse.llm.schema import LLMRequest
+from pulse.llm.schema import DailyBudgetExhausted, LLMRefusal, LLMRequest, LLMTruncated
 from pulse.models import RunStatus, Taxonomy, Theme
 from pulse.pipeline import MissingArtifact, RunOptions, RunOutcome, run_pipeline
 from pulse.report.words import count_words
@@ -176,3 +176,51 @@ def test_resume_from_compose_reuses_saved_quotes(tmp_settings: Settings, tmp_sto
         resumed.status == RunStatus.VALIDATED and calls(later, "quotes") == 0 and calls(later, "compose") == 1
     )
     assert json.loads((resumed.run_dir / "quotes.json").read_text())["quotes"] == saved
+
+
+def failing_first(error: Exception, times: int, then: Callable) -> Callable:
+    """Raises `error` for the first `times` calls, then answers with `then`."""
+    raised: list[Exception] = []
+
+    def handle(req: LLMRequest) -> BaseModel:
+        if len(raised) < times:
+            raised.append(error)
+            raise error
+        return then(req)
+
+    return handle
+
+
+def test_daily_budget_in_compose_fails_with_resume_hint(
+    tmp_settings: Settings, tmp_store: Store
+) -> None:  # LLM-13
+    seed(tmp_store)
+    out_of_budget = failing_first(DailyBudgetExhausted(200_000, 200_000), 99, drafter())
+    out = run(
+        tmp_settings,
+        tmp_store,
+        FakeLLM({"classify": classify, "quotes": pick_quote, "compose": out_of_budget}),
+    )
+    assert out.status == RunStatus.FAILED
+    report = (out.run_dir / "report.md").read_text()
+    assert (
+        "daily_token_budget" in report
+        and "pulse run --week 2026-W42 --from compose --until validate" in report
+    )
+
+
+def test_compose_error_is_retried_as_a_failed_attempt(tmp_settings: Settings, tmp_store: Store) -> None:
+    seed(tmp_store)
+    truncated_once = failing_first(LLMTruncated("response hit max_completion_tokens"), 1, drafter())
+    llm = FakeLLM({"classify": classify, "quotes": pick_quote, "compose": truncated_once})
+    out = run(tmp_settings, tmp_store, llm)
+    assert out.status == RunStatus.VALIDATED and calls(llm, "compose") == 2
+
+
+def test_compose_that_never_answers_fails_validation(tmp_settings: Settings, tmp_store: Store) -> None:
+    seed(tmp_store)
+    refusing = failing_first(LLMRefusal("content_filter"), 99, drafter())
+    llm = FakeLLM({"classify": classify, "quotes": pick_quote, "compose": refusing})
+    out = run(tmp_settings, tmp_store, llm)
+    assert out.status == RunStatus.VALIDATION_FAILED and calls(llm, "compose") == 3
+    assert "compose failed after 3 attempts" in (out.run_dir / "report.md").read_text()

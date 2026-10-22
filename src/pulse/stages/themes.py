@@ -47,7 +47,7 @@ def discover(context: RunContext) -> RunStatus | None:
         try:
             taxonomy = _discover_new(context, eligible)
         except DailyBudgetExhausted:
-            return _budget_failure(context, "discover", "daily_token_budget: discovery could not finish")
+            return budget_failure(context, "discover", "daily_token_budget: discovery could not finish")
     _use_taxonomy(context, taxonomy)
     return None
 
@@ -59,7 +59,7 @@ def classify(context: RunContext) -> RunStatus:
     result = _classify(context, eligible, taxonomy)
     if result.stopped_for_budget:
         done = len(eligible) - result.pending_after
-        return _budget_failure(
+        return budget_failure(
             context, "classify", f"daily_token_budget: classified {done} of {len(eligible)}"
         )
     return RunStatus.CLASSIFIED
@@ -101,13 +101,13 @@ def _rediscover(  # craftsman-ignore: WARN-PY001 (regex counts the return tuple)
     try:
         taxonomy = _discover_new(context, eligible)
     except DailyBudgetExhausted:
-        return _budget_failure(context, "discover", "daily_token_budget: rediscovery could not finish")
+        return budget_failure(context, "discover", "daily_token_budget: rediscovery could not finish")
     context.report.counts["rediscovered"] = True  # persisted, so a resumed run never rediscovers twice
     _use_taxonomy(context, taxonomy)
     result = _classify(context, eligible, taxonomy)
     if result.stopped_for_budget:
         done = len(eligible) - result.pending_after
-        return _budget_failure(
+        return budget_failure(
             context, "classify", f"daily_token_budget: reclassified {done} of {len(eligible)}"
         )
     mapping = theme_mapping(old_labels, result.classifications)
@@ -222,11 +222,13 @@ def stage_llm(context: RunContext) -> object:
     return context.llm
 
 
-def _budget_failure(context: RunContext, stage: str, message: str) -> RunStatus:
+def budget_failure(
+    context: RunContext, stage: str, message: str, section: str = "Classification"
+) -> RunStatus:
     hint = RESUME_HINT.format(week=context.window.iso_week, stage=stage, until=context.opts.until_stage)
     line = f"{message}; {hint}"  # LLM-13
     context.report.warnings.append(line)
-    context.report.sections.setdefault("Classification", line)
+    context.report.sections.setdefault(section, line)
     return RunStatus.FAILED
 
 

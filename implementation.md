@@ -23,49 +23,31 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 built; final review "with fixes" (1 Critical, 6 Important) and **fix pass done** (333 tests pass, ruff clean); live backfill day 1 done (800/2,177 classified), about 2 resumes to go, from 00:00 UTC 2026-10-23; then the gold set (manual) | `phase-3-themes` (on GitHub; the fix-pass commits are local until pushed) | Groq free tier. Discovery produced taxonomy v1 with 5 themes. See the Handoff for the next steps. |
-| 4–6 | Not started | — | — |
+| 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC (scheduled in the Claude session, newest reviews first). **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
+| 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
+| 5. Delivery | 🚧 In progress (2026-10-22): Tasks 5.1–5.2 built against the in-process stub server; 5.3 next. The real server (workspace-mcp) needs the user's Google OAuth client. | `phase-5-deliver` (local) | Self-hosted Workspace MCP server; drafts to bhavyachadha256@gmail.com. |
+| 6 | Not started | — | — |
 
-### Handoff (for a new session, as of 2026-10-22, mid-Phase 3)
+### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
 
 **Where things stand**
-- **Branches:**
-  - `main` matches GitHub `origin/main` (commit `9da3352`): Phases 0–2 plus Task 1.4, published as one clean commit.
-  - The local branch `archive/full-history` holds the pre-publication history. **Never push it.**
-- **`phase-3-themes`** (on GitHub as `origin/phase-3-themes`; the fix-pass commits are local until pushed) holds Tasks 3.1–3.6 implemented test-first plus the final-review fix pass; 333 tests pass and ruff is clean. It merges into `main` only at the Phase 3 checkpoint.
-- **Data:**
-  - **`data/raw/`** (git-ignored) holds 2 App Store exports (100 unique reviews, 10 Sep – 5 Oct 2026) and 1 Play fetch (13,057 reviews, 27 Jul – 20 Oct 2026).
-  - **`data/pulse.db`** holds the 12,978 reviews of the W42 window. 2,177 are eligible for themes (2,136 Play + 41 App Store); 10,801 are stored but excluded (10,363 `too_short`, 438 `unsupported_language`).
-- **Groq:** the key is in `.env` (git-ignored) and was verified live: both models are available, and the headers show 8,000 TPM and 1,000 RPD.
-- **Live checkpoint run, day 1:**
-  - **Run:** `uv run pulse run --week 2026-W42 --until aggregate`, started 2026-10-22 at about 09:09 UTC. Its run ID is `2026-W42-20261022T090923`, and its artifacts are in `runs/2026-W42-20261022T090923/`.
-  - **Discovery** finished with **taxonomy v1, 5 themes:** `support_account` Support & Account, `app_performance` App Performance, `charges_fees` Charges & Fees, `trading_experience` Trading Experience, `mutual_funds_sip` Mutual Funds & SIP. They match finding D3.
-  - **Day 1 result (finished 2026-10-22):** status `FAILED` with `daily_token_budget: classified 800 of 2177; run again after 00:00 UTC with --from classify` (the hint format before the fix pass; it now prints the full `pulse run --week … --from classify --until …` command, and a resume drops this stale warning). **This is the planned outcome.** 800 of 2,177 reviews are classified and saved, 0 are unclassified, and the day used 178,331 tokens in 33 calls. **1,377 reviews remain**, about 2 more daily resumes. It is expected to stop at the daily budget with status `FAILED` and the warning `daily_token_budget: … --from classify`. **That is the planned outcome, not an error.**
-  - **Observed token use** is about **180 tokens per classified review** including reasoning, against the plan's estimate of 80, plus about 39K for discovery. The backfill therefore takes about **3 days**, not 2. Recalibrate `REVIEW_OUTPUT_TOKENS` / `estimate_classify_tokens` from the finished run (a deferred minor).
-- **Final review: done, "with fixes" (1 Critical, 6 Important, 10 Minor). The fix pass is done (2026-10-22):** every Critical/Important finding and the cheap extras are fixed, each with a test that failed first; see **Phase 3 final-review fix pass** above the Phase 3 checkpoint, and the `Final: fixed …` ledger lines. The findings were:
-  - **C1 (Critical):** the "rediscover once" guard is held only in memory, so every `--from classify` resume can rediscover again and the backfill never finishes. **Fix C1 before resuming the live run.**
-  - **I1:** a 429 can sleep for hours, then fail without a resume hint.
-  - **I2:** a 50-review chunk larger than `tpm` stops classification permanently.
-  - **I3:** the eval suite scores infrastructure failures as wrong answers.
-  - **I4:** `PROMPT_VERSION` is hard-coded, so bumping the prompt doesn't invalidate the cache.
-  - **I5:** a same-day eval rerun overwrites the baseline.
-  - **I6:** `load_gold` doesn't validate the human labels.
-  - **Also cheap to fix:** the resume hint lacks `--week` and `--until aggregate`; resumed reports keep stale warnings; the 2-character names `f1` and `ci` break the naming rule.
+- **Branches** (each built on the one before; none merged into `main` yet):
+  - `main` = GitHub `origin/main` (`9da3352`): Phases 0–2. `archive/full-history` holds the pre-publication history: **never push it.**
+  - `phase-3-themes`: Phase 3 code plus its fix pass. On GitHub up to `66c67b3`; the fix-pass commits are local.
+  - `phase-4-pulse`: Phase 4 (quotes, compose, render, V1–V7, pulse stages, evals) plus its fix pass. Local.
+  - `phase-5-deliver`: Tasks 5.1 (MCP gateway) and 5.2 (Doc + draft) built against `tests/stub_mcp.py`. Local; rebase it onto `phase-4-pulse` after Phase 4 fixes.
+- **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. In the original session this is scheduled (05:37 and 17:47 IST, session-only jobs that need the laptop awake and VS Code open); a new session must schedule or run it by hand.
+- **Groq:** key in `.env` (git-ignored), verified 2026-10-22: both models available.
+- **Delivery decisions (user, 2026-10-22):** self-hosted Google Workspace MCP server, chosen as `workspace-mcp` (`uvx workspace-mcp --single-user --tools docs gmail`); drafts addressed to `bhavyachadha256@gmail.com`. Tool names in `config/mcp.yaml` stay placeholders until the authorised server lists them.
+- **Evals:** `uv run pulse eval --suite deterministic` passes on the real data (free; run it on every commit).
 
 **Next steps (in order)**
-0. ~~**Fix pass first.**~~ Done 2026-10-22 (C1, I1–I6 and the extras; 333 tests pass).
-1. **Check day 1.** Read `runs/2026-W42-20261022T090923/report.md` (the Classification section and Warnings), or run `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`. If the process died, simply resume (step 2): the cache keeps every finished chunk.
-2. **Each following day, after 00:00 UTC:** run `uv run pulse run --week 2026-W42 --from classify --until aggregate` until the status is `AGGREGATED`, about 2 more days. Don't run evals on those days, because they share the daily budget.
-3. **Check the result** in `report.md` → **Top themes**: 3–5 themes with names of at most 4 words (E-TAX-4), `actionable_unthemed_share` ≤ 0.20 (E-TAX-1), and no `broad_theme:` warning. If one appears, revise `discover.md` and run `pulse rediscover`.
-4. **Final review:** done; its fixes are step 0. No second review is needed. The fix-pass tests are the proof.
-5. **Gold set (manual):**
-   1. Run `uv run pulse eval --export-gold 200`.
-   2. Two people label `gold_theme` independently, using the praise rule; they must read Hinglish.
-   3. Compute κ (it must be ≥ 0.70) and adjudicate disagreements.
-   4. Fill in `evals/gold/gold_v1.meta.json`.
-   5. On a day with no backfill, run `uv run pulse eval --suite classification` (target E-CLS-1 ≥ 0.80).
-   6. The gold CSV is git-ignored, so **back it up privately**.
-6. **Close the phase:** merge `phase-3-themes` into `main`, `git tag phase-3`, refresh `docs/decision-ledger.md`, scan for keys and review text, then `git push origin main`.
+1. **Each day after 00:00 UTC:** resume the backfill until `AGGREGATED` (about 2 more days). Check `report.md` → Top themes: 3–5 themes, names ≤ 4 words, `actionable_unthemed_share` ≤ 0.20, no `broad_theme:` warning.
+2. **Finish Task 5.3** (delivery stages, `pulse doctor`, README) on `phase-5-deliver`, against the stub.
+3. **Phase 4 checkpoint:** once last week is labelled, `uv run pulse run --week 2026-W42 --dry-run` and read `pulse.md` in full (find each quote in the source, check for PII). On a day with no backfill, `uv run pulse eval --suite pulses`.
+4. **Google setup (user):** create a Google Cloud OAuth client (Desktop app) with the Docs, Drive and Gmail APIs enabled; put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` in `.env`; create a Drive folder and set `delivery.drive_folder_id`; authorise workspace-mcp once. Then fill `config/mcp.yaml` from the server's tool list and run `pulse doctor` (Phase 5 checkpoint).
+5. **Gold set (needs two human annotators):** `pulse eval --export-gold 200`, label, κ ≥ 0.70, then `pulse eval --suite classification`. Until then Phase 3's checkpoint stays open.
+6. **Merging:** phases merge into `main` in order (3, 4, 5) at their checkpoints, then tag and push, with the user's OK.
 
 **How to resume on a new machine:** follow README.md, "Set up on any machine": install uv, `uv sync`, `cp .env.example .env` (and paste the key), then fetch and ingest. On the original Mac, run `export PATH="$HOME/Library/Python/3.9/bin:$PATH"` first. Work continues with superpowers:executing-plans. The ledger is `.superpowers/sdd/implementation/progress.md` (git-ignored); a committed copy is in `docs/decision-ledger.md`, so seed the ledger from it on a new machine.
 
@@ -91,10 +73,19 @@ Update this table whenever a task or phase changes state.
   - Two runs started in the same UTC second collide on `run_id`.
 - **Phase 3:**
   - `estimate_classify_tokens` assumes about 80 tokens per review; the live run used about 180, because reasoning counts too. Recalibrate it from the finished backfill.
+- **Phase 4** (from the final review):
+  - `NULL-validators` ignores each mutation's expected gate code.
+  - V2 ">5 themes" and V1 quote-count issues route to compose, which can't fix them (wasted retries).
+  - Every V6 issue re-runs quotes, even one found in a draft field.
+  - Model-written summaries, actions and theme names aren't `escape_md`'d in the Markdown render.
+  - The V4 message echoes the model's `theme_ids` into `validation.json` and `report.md`.
+  - The pulses suite loses finished datasets if an `LLMError` is raised partway.
+  - The deterministic suite creates `data/pulse.db` on a fresh machine.
+  - `strip(SURROUNDING_QUOTES)` also strips a closing quote or apostrophe that belongs to the review.
 
 **Waiting on the user**
-- Two people to label the 200-review gold set (Phase 3 checkpoint).
-- The Workspace MCP server choice and the recipient address, before Phase 5.
+- Two people to label the 200-review gold set (Phase 3 checkpoint); none available as of 2026-10-22.
+- The Google OAuth client, Drive folder and one-time workspace-mcp authorisation (Phase 5 checkpoint).
 
 **Working agreements**
 - **Decisions:** make the call and record it as an **As built** note or a ledger ruling. Don't stop to ask.
@@ -2218,11 +2209,25 @@ Expected: all passed.
 > - **CLI:** `pulse eval --suite deterministic|classification|pulses`; `deterministic` needs no key.
 > - **Extra tests:** `test_burst_dataset_adds_identical_latest_week_reviews`, `test_deterministic_suite_aborts_when_a_baseline_misbehaves`, `test_artifact_scan_ignores_review_ids`, `test_eval_runs_deterministic_and_pulses_suites`.
 
+### Phase 4 final-review fix pass (2026-10-22)
+
+A fresh-context review returned "with fixes" (0 Critical, 6 Important, 8 Minor). Each fix has a test that failed first; 410 tests pass, ruff clean.
+
+| Finding | Fix | Tests (task) |
+|---|---|---|
+| E-PII-1 flagged JSON floats (`0.3037037037037037`) as account numbers, so the gate would fail on every real run | The scan masks decimal fractions before `find_pii` | 4.5 `test_artifact_scan_ignores_decimal_fractions` |
+| Budget and LLM errors in quotes/compose crashed the run with a traceback | `quotes`, `compose` and `validate` end `FAILED` with `daily_token_budget: …; run again after 00:00 UTC: pulse run --week … --from <stage> --until <stage>`; a refused, truncated or invalid compose answer is retried up to `pulse.retries` times, then `VALIDATION_FAILED` (`compose failed after 3 attempts`); `RequestTooLarge` is a failed quote pick | 4.4 `test_daily_budget_in_compose_fails_with_resume_hint`, `test_compose_error_is_retried_as_a_failed_attempt`, `test_compose_that_never_answers_fails_validation`, 4.1 `test_request_too_large_counts_as_a_failed_pick` |
+| Quote length counted with `str.split()` in selection but `count_words` in V5, so an F&O quote could fail V5 forever (compose can't fix a quote) | `verify_quote` uses `count_words`, so an over-long quote fails V3 and re-runs quotes | 4.1 `test_verify_quote_counts_words_like_the_validator`, 4.3 `test_overlong_quote_routes_to_quotes` |
+| `verify_quote` accepted spans cut mid-word ("able" inside "unable") | Spans must start and end on word boundaries (Devanagari signs count as word characters); the null baseline adds a span cut mid-word | 4.1 `test_verify_quote_requires_word_boundaries` |
+| A quote across a paragraph break kept `\n\n` and broke the blockquote (re-graded from Minor) | Stored quotes have collapsed whitespace | 4.1 `test_quote_whitespace_is_collapsed` |
+| Live `thin` can't reliably end `INSUFFICIENT_DATA` (discovery always emits ≥3 themes) | E-PUL-1 is scored on `normal` and `burst`; `thin` is the tracking metric `thin-insufficient-data` (ruling) | 4.5 `test_pulses_suite_records_first_attempt_pass` |
+| Status table and Handoff were stale | Updated | — |
+
 ### Phase 4 checkpoint
 
-- [ ] `uv run pytest -v`: all passed.
-- [ ] `uv run pulse eval --suite deterministic`: every metric passes.
-- [ ] `uv run pulse eval --suite pulses`: E-PUL-1 = 100%, E-PUL-2 ≥ 80%, E-QUO-1 = 100%, and `thin` ends `INSUFFICIENT_DATA`.
+- [x] `uv run pytest -v`: all passed (410, 2026-10-22).
+- [x] `uv run pulse eval --suite deterministic`: every metric passes on the real data (2026-10-22; E-QUO-1 n/a until a run writes quotes).
+- [ ] `uv run pulse eval --suite pulses` (about a day's Groq budget; not on a backfill day): E-PUL-1 = 100% (`normal` and `burst`), E-PUL-2 ≥ 80%, E-QUO-1 = 100%; `thin-insufficient-data` is tracking only.
 - [ ] `uv run pulse run --week 2026-W42 --dry-run` on the real export. Read `pulse.md` in full, find each quote in the source export (H4), and read it for PII (H5).
 - [ ] `git tag phase-4`
 
