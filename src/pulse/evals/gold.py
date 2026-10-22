@@ -8,7 +8,7 @@ import csv
 import json
 import random
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -22,6 +22,8 @@ from pulse.timeutil import Window, window_bounds_utc
 GOLD_COLUMNS = ("review_id", "rating", "source", "title", "text", "gold_theme", "gold_sentiment")
 GOLD_PATH = Path("evals/gold/gold_v1.csv")
 MIN_KAPPA = 0.70
+SENTIMENTS = ("negative", "mixed", "positive")
+SHOWN_INVALID = 10  # how many bad values an error lists
 
 
 class GoldMetaError(Exception):
@@ -79,14 +81,15 @@ def export_gold(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hint on
     return len(rows)
 
 
-def load_gold(path: Path, *, current_version: int) -> GoldSet:
-    """The labelled gold set; refuses one without agreement κ ≥ 0.70 or from another taxonomy version."""
+def load_gold(path: Path, *, taxonomy: Taxonomy) -> GoldSet:
+    """The labelled gold set; refuses one without agreement κ ≥ 0.70, from another taxonomy version,
+    or with a `gold_theme` or `gold_sentiment` the taxonomy doesn't have."""
     meta = GoldMeta(**json.loads(meta_path(path).read_text(encoding="utf-8")))
     if meta.kappa is None or meta.kappa < MIN_KAPPA:
         raise GoldMetaError(f"gold kappa is {meta.kappa}; annotator agreement must be at least {MIN_KAPPA}")
-    if meta.taxonomy_version != current_version:
+    if meta.taxonomy_version != taxonomy.version:
         raise GoldMetaError(
-            f"gold set is for taxonomy v{meta.taxonomy_version}, current is v{current_version}; "
+            f"gold set is for taxonomy v{meta.taxonomy_version}, current is v{taxonomy.version}; "
             "remap with theme_mapping and have a human verify it"
         )
     with Path(path).open(encoding="utf-8", newline="") as handle:
@@ -98,7 +101,30 @@ def load_gold(path: Path, *, current_version: int) -> GoldSet:
     sentiments = {
         row["review_id"]: row["gold_sentiment"].strip() for row in rows if row["gold_sentiment"].strip()
     }
+    _refuse_unknown(
+        labels.values(),
+        class_labels(taxonomy),
+        f"gold_theme values are not classes of taxonomy v{taxonomy.version}",
+    )
+    _refuse_unknown(
+        sentiments.values(), SENTIMENTS, "gold_sentiment values are not negative, mixed or positive"
+    )
     return GoldSet(labels=labels, sentiments=sentiments, meta=meta)
+
+
+def check_gold_reviews(gold: GoldSet, found: Sequence[Review]) -> None:
+    """Every gold review must still be in the store; a missing one would be scored as unclassified."""
+    missing = sorted(set(gold.labels) - {review.review_id for review in found})
+    if missing:
+        raise GoldMetaError(
+            f"{len(missing)} gold review IDs are not in the store: {', '.join(missing[:SHOWN_INVALID])}"
+        )
+
+
+def _refuse_unknown(values: Iterable[str], allowed: Sequence[str], problem: str) -> None:
+    unknown = sorted(set(values) - set(allowed))
+    if unknown:
+        raise GoldMetaError(f"{len(unknown)} {problem}: {', '.join(unknown[:SHOWN_INVALID])}")
 
 
 def _pool(store: Store, window: Window, taxonomy: Taxonomy) -> list[Review]:

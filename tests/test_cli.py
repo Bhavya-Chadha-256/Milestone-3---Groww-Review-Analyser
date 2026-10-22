@@ -179,3 +179,19 @@ def test_eval_suite_aborted_exits_with_message(
     monkeypatch.setattr(cli, "run_classification_suite", out_of_budget)
     result = invoke(tmp_settings, tmp_path, "eval", "--suite", "classification")
     assert result.exit_code == 2 and "nothing was scored" in result.output
+
+
+def test_eval_refuses_unusable_gold_set_with_message(
+    tmp_settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # review I6
+    from pulse.evals.gold import GoldMetaError
+
+    def bad_gold(*args: Any, **kwargs: Any) -> Path:
+        raise GoldMetaError("2 gold_theme values are not classes of taxonomy v1: kyc")
+
+    monkeypatch.setattr(
+        cli, "build_dependencies", lambda settings, **kwargs: cli.Deps(store=None, sources=[])
+    )
+    monkeypatch.setattr(cli, "run_classification_suite", bad_gold)
+    result = invoke(tmp_settings, tmp_path, "eval", "--suite", "classification")
+    assert result.exit_code == 2 and "not classes of taxonomy v1" in result.output

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from pulse.config import Settings
-from pulse.evals.gold import GOLD_PATH, GoldSet, load_gold
+from pulse.evals.gold import GOLD_PATH, GoldSet, check_gold_reviews, load_gold
 from pulse.evals.metrics import class_labels, cohen_kappa, macro_f1, majority_baseline, paired_bootstrap_ci
 from pulse.evals.runner import RESULTS_ROOT, EvalRun
 from pulse.llm.classify import ClassifyResult, classify_reviews
@@ -36,11 +36,12 @@ def run_classification_suite(  # craftsman-ignore: WARN-PY001, PY003 (plan inter
     taxonomy = store.latest_taxonomy()
     if taxonomy is None:
         raise RuntimeError("no taxonomy yet; run discovery first")
-    gold = load_gold(gold_path or _dataset_path(dataset), current_version=taxonomy.version)
+    gold = load_gold(gold_path or _dataset_path(dataset), taxonomy=taxonomy)
     classes = class_labels(taxonomy)
     if macro_f1(gold.labels, gold.labels, classes)[0] != 1.0:  # oracle check: the scorer itself must be sound
         raise RuntimeError("oracle check failed: gold labels scored against themselves did not give F1 = 1.0")
     reviews = store.get_reviews(list(gold.labels))
+    check_gold_reviews(gold, reviews)
     results = [_classify_fresh(llm, settings, reviews, taxonomy) for _ in range(REPETITIONS)]
     runs = [result.classifications for result in results]
     run = EvalRun(f"classification-{dataset}", out_root)

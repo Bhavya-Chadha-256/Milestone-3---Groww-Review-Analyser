@@ -170,12 +170,14 @@ def write_gold(path: Path, labels: dict[str, str], *, kappa: float | None, versi
 def test_load_gold_refuses_low_kappa_or_mismatched_taxonomy(tmp_path: Path) -> None:
     labels = {"g0001": "support", "g0002": "unthemed"}
     with pytest.raises(GoldMetaError, match="kappa"):
-        load_gold(write_gold(tmp_path / "low.csv", labels, kappa=0.6), current_version=1)
+        load_gold(write_gold(tmp_path / "low.csv", labels, kappa=0.6), taxonomy=taxonomy())
     with pytest.raises(GoldMetaError, match="kappa"):
-        load_gold(write_gold(tmp_path / "none.csv", labels, kappa=None), current_version=1)
+        load_gold(write_gold(tmp_path / "none.csv", labels, kappa=None), taxonomy=taxonomy())
     with pytest.raises(GoldMetaError, match="taxonomy"):
-        load_gold(write_gold(tmp_path / "old.csv", labels, kappa=0.8, version=1), current_version=2)
-    gold = load_gold(write_gold(tmp_path / "ok.csv", labels, kappa=0.8), current_version=1)
+        load_gold(
+            write_gold(tmp_path / "old.csv", labels, kappa=0.8, version=1), taxonomy=taxonomy(version=2)
+        )
+    gold = load_gold(write_gold(tmp_path / "ok.csv", labels, kappa=0.8), taxonomy=taxonomy())
     assert gold.labels == labels and gold.sentiments == {"g0001": "negative", "g0002": "negative"}
 
 
@@ -312,3 +314,30 @@ def test_same_day_reruns_keep_separate_results(tmp_path: Path) -> None:  # evalu
     ]
     with pytest.raises(FileExistsError):
         EvalRun("classification", tmp_path, started=morning).finish(UsageLedger(), Pricing())
+
+
+def test_load_gold_rejects_labels_outside_taxonomy(tmp_path: Path) -> None:  # review I6
+    labels = {"g0001": "support", "g0002": "Support & Account", "g0003": "kyc"}
+    with pytest.raises(GoldMetaError, match="Support & Account") as raised:
+        load_gold(write_gold(tmp_path / "typo.csv", labels, kappa=0.8), taxonomy=taxonomy())
+    assert "kyc" in str(raised.value)
+    path = write_gold(tmp_path / "mood.csv", {"g0001": "support"}, kappa=0.8)
+    path.write_text(path.read_text().replace(",negative", ",angry"))
+    with pytest.raises(GoldMetaError, match="angry"):
+        load_gold(path, taxonomy=taxonomy())
+
+
+def test_suite_refuses_gold_ids_missing_from_store(
+    tmp_settings: Settings, tmp_store: Store, tmp_path: Path
+) -> None:  # review I6
+    ids = seed_store(tmp_store, 40)
+    tmp_store.save_taxonomy(taxonomy())
+    gold_path = write_gold(
+        tmp_path / "gold_v1.csv", dict.fromkeys([*ids[:5], "gone0001"], "support"), kappa=0.85
+    )
+    llm = FakeLLM({"classify": echo_labels(lambda key: "support")})
+    with pytest.raises(GoldMetaError, match="gone0001"):
+        run_classification_suite(
+            tmp_settings, llm, tmp_store, "gold", gold_path=gold_path, out_root=tmp_path / "results"
+        )
+    assert llm.calls == []

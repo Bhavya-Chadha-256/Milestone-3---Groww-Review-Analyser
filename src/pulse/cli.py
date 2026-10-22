@@ -11,7 +11,7 @@ from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
-from pulse.evals.gold import GOLD_PATH, export_gold
+from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
 from pulse.ingest.base import ReviewSource
@@ -305,7 +305,7 @@ def eval_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on
         out = run_classification_suite(
             settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
         )
-    except LLMError as error:  # EvalAborted and other infrastructure failures: nothing was scored
+    except (LLMError, GoldMetaError) as error:  # EvalAborted, or an unusable gold set: nothing was scored
         typer.echo(str(error))
         raise typer.Exit(EXIT_REFUSED) from error
     typer.echo(f"results: {out}")
