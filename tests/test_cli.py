@@ -195,3 +195,32 @@ def test_eval_refuses_unusable_gold_set_with_message(
     monkeypatch.setattr(cli, "run_classification_suite", bad_gold)
     result = invoke(tmp_settings, tmp_path, "eval", "--suite", "classification")
     assert result.exit_code == 2 and "not classes of taxonomy v1" in result.output
+
+
+def test_eval_runs_deterministic_and_pulses_suites(
+    tmp_settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # Task 4.5
+    ran: list[str] = []
+
+    def deterministic(settings: Settings) -> Path:
+        ran.append("deterministic")
+        return tmp_path / "det"
+
+    def pulses(settings: Settings, llm: Any) -> Path:
+        ran.append("pulses")
+        return tmp_path / "pul"
+
+    built: list[bool] = []
+
+    def deps(settings: Settings, **kwargs: Any) -> Any:
+        built.append(kwargs.get("need_llm", False))
+        return cli.Deps(store=None, sources=[], llm="llm")
+
+    monkeypatch.setattr(cli, "run_deterministic_suite", deterministic)
+    monkeypatch.setattr(cli, "run_pulses_suite", pulses)
+    monkeypatch.setattr(cli, "build_dependencies", deps)
+    first = invoke(tmp_settings, tmp_path, "eval", "--suite", "deterministic")
+    second = invoke(tmp_settings, tmp_path, "eval", "--suite", "pulses")
+    assert first.exit_code == 0 and second.exit_code == 0, first.output + second.output
+    assert ran == ["deterministic", "pulses"] and built == [True]
+    assert "det" in first.output and "pul" in second.output

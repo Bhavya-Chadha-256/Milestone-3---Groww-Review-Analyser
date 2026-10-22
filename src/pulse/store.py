@@ -106,6 +106,9 @@ class Store:
         )
         return [Review.model_validate_json(data) for (data,) in rows]
 
+    def review_ids(self) -> set[str]:
+        return {review_id for (review_id,) in self.conn.execute("SELECT review_id FROM reviews")}
+
     def get_reviews(self, review_ids: Iterable[str]) -> list[Review]:
         """The stored reviews with these IDs, ordered by ID; unknown IDs are skipped."""
         found: list[Review] = []

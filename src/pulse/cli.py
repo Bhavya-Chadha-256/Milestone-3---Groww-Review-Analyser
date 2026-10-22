@@ -14,6 +14,8 @@ from pulse.config import Settings, load_env, load_settings
 from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
+from pulse.evals.suites.deterministic import run_deterministic_suite
+from pulse.evals.suites.pulses import run_pulses_suite
 from pulse.ingest.base import ReviewSource
 from pulse.ingest.file_import import FileImportSource
 from pulse.llm.client import GroqLLM
@@ -35,6 +37,7 @@ from pulse.timeutil import resolve_window, today_in_tz, window_bounds_utc
 DEFAULT_CONFIG = Path("config/pulse.yaml")
 ENV_FILE = Path(".env")
 EXIT_REFUSED = 2
+SUITES = ("deterministic", "classification", "pulses")
 EXIT_RUN_IN_PROGRESS = 3
 
 app = typer.Typer(no_args_is_help=True, help="Groww Weekly Review Pulse.")
@@ -268,7 +271,9 @@ def _execute(  # craftsman-ignore: WARN-PY001 (keyword flags forwarded from the 
 @app.command("eval")
 def eval_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on closing line)
     ctx: typer.Context,
-    suite: str | None = typer.Option(None, "--suite", help="Suite to run: classification."),
+    suite: str | None = typer.Option(
+        None, "--suite", help="Suite to run: deterministic, classification or pulses."
+    ),
     dataset: str = typer.Option("gold", "--dataset", help="gold or drift."),
     export_gold_count: int | None = typer.Option(
         None, "--export-gold", min=1, help="Export N reviews to label."
@@ -293,19 +298,24 @@ def eval_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on
         count = export_gold(store, window, taxonomy, n=export_gold_count, path=gold)
         typer.echo(f"wrote {count} reviews to label: {gold} (meta: {gold.with_suffix('.meta.json')})")
         return
-    if suite != "classification":
-        typer.echo("Use --suite classification, --export-gold N or --compare A B.")
+    if suite not in SUITES:
+        typer.echo(f"Use --suite {'|'.join(SUITES)}, --export-gold N or --compare A B.")
         raise typer.Exit(EXIT_REFUSED)
     try:
-        deps = build_dependencies(settings, need_llm=True)
-    except LLMError as error:
-        typer.echo(str(error))
-        raise typer.Exit(EXIT_REFUSED) from error
-    try:
-        out = run_classification_suite(
-            settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
-        )
-    except (LLMError, GoldMetaError) as error:  # EvalAborted, or an unusable gold set: nothing was scored
+        out = _run_suite(settings, suite, dataset, gold)
+    except (LLMError, GoldMetaError) as error:  # EvalAborted, no key, or an unusable gold set: nothing scored
         typer.echo(str(error))
         raise typer.Exit(EXIT_REFUSED) from error
     typer.echo(f"results: {out}")
+
+
+def _run_suite(settings: Settings, suite: str, dataset: str, gold: Path) -> Path:
+    """deterministic is free and needs no key; classification and pulses call Groq (evaluation §10)."""
+    if suite == "deterministic":
+        return run_deterministic_suite(settings)
+    deps = build_dependencies(settings, need_llm=True)
+    if suite == "pulses":
+        return run_pulses_suite(settings, deps.llm)
+    return run_classification_suite(
+        settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
+    )
