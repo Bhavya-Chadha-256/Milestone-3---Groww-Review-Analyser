@@ -1,5 +1,6 @@
 """Typed settings loaded from config/pulse.yaml (architecture.md §10)."""
 
+import ipaddress
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
@@ -16,6 +17,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    field_validator,
     model_validator,
 )
 
@@ -181,6 +183,28 @@ class DeliverySettings(StrictModel):
     doc_title: str
 
 
+class DashboardSettings(StrictModel):
+    """`pulse serve` (Task 7.2): local only, so the host must be a loopback address."""
+
+    host: str = "127.0.0.1"
+    port: PositiveInt = 8787
+    page_size: PositiveInt = 50
+    max_page_size: PositiveInt = 200
+    allow_export: bool = True
+    export_max_rows: PositiveInt = 5000
+
+    @field_validator("host")
+    @classmethod
+    def _loopback_only(cls, host: str) -> str:
+        try:
+            loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback = False
+        if not loopback:
+            raise ValueError("dashboard.host must be a loopback address (127.0.0.1, ::1 or localhost)")
+        return host
+
+
 class IngestSettings(StrictModel):
     """Theme eligibility (architecture.md §3.2): other reviews are stored but never themed or quoted."""
 
@@ -213,6 +237,7 @@ class Settings(StrictModel):
     monitoring: MonitoringSettings
     evals: EvalSettings
     delivery: DeliverySettings
+    dashboard: DashboardSettings = DashboardSettings()
     ingest: IngestSettings
     privacy: PrivacySettings
     retention: RetentionSettings

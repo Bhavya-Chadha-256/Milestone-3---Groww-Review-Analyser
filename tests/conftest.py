@@ -3,7 +3,9 @@
 import shutil
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 import stub_mcp
@@ -113,3 +115,26 @@ def append_config() -> McpConfig:
 @pytest.fixture
 def append_factory(append_config: McpConfig) -> GatewayFactory:
     return stub_factory(append_config)
+
+
+# Dashboard (Phase 7): the API over the sample store in tests/web_data.py, as seen from 22 Oct 2026.
+
+DASHBOARD_TODAY = date(2026, 10, 22)
+DASHBOARD_URL = "http://127.0.0.1:8787"
+
+
+def dashboard_client(settings: Settings) -> Any:
+    """A TestClient for `create_app(settings)`; the web extra is imported only by dashboard tests."""
+    from fastapi.testclient import TestClient
+
+    from pulse.web.app import create_app
+
+    return TestClient(create_app(settings, today=DASHBOARD_TODAY), base_url=DASHBOARD_URL)
+
+
+@pytest.fixture
+def web_client(tmp_settings: Settings) -> Any:
+    from web_data import write
+
+    write(Path(tmp_settings.paths.db))
+    return dashboard_client(tmp_settings)

@@ -409,6 +409,29 @@ def _run_suite(settings: Settings, suite: str, dataset: str, gold: Path) -> Path
     )
 
 
+@app.command("serve")
+def serve_command(
+    ctx: typer.Context,
+    port: int | None = typer.Option(None, "--port", help="Port (default: dashboard.port, 8787)."),
+) -> None:
+    """Open the local, read-only dashboard in your browser (needs: uv sync --extra web)."""
+    settings = _settings(ctx)
+    try:
+        import uvicorn
+
+        from pulse.web.app import create_app
+    except ImportError:
+        typer.echo("The dashboard needs the web extra; install with: uv sync --extra web")
+        raise typer.Exit(EXIT_REFUSED) from None
+    dashboard = settings.dashboard.model_copy(update={"port": port or settings.dashboard.port})
+    settings = settings.model_copy(update={"dashboard": dashboard})
+    typer.echo(f"Review Pulse dashboard: http://{dashboard.host}:{dashboard.port}  (Ctrl+C to stop)")
+    # No access log and quiet server logs: query strings and review text never reach a log line (E-WEB-3).
+    uvicorn.run(
+        create_app(settings), host=dashboard.host, port=dashboard.port, access_log=False, log_level="warning"
+    )
+
+
 @app.command("doctor")
 def doctor_command(ctx: typer.Context) -> None:
     """Check config, the Groq key and models, and the Workspace MCP server before a delivering run."""

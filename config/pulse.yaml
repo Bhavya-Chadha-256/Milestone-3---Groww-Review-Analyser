@@ -75,4 +75,11 @@ privacy:
   extra_patterns: []                     # Groww client-code / order-ID formats; fill before first real run
 retention:
   raw_days: 14
+dashboard:                               # pulse serve (Phase 7): local only
+  host: 127.0.0.1                        # must be a loopback address
+  port: 8787
+  page_size: 50
+  max_page_size: 200
+  allow_export: true
+  export_max_rows: 5000
 paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings }
