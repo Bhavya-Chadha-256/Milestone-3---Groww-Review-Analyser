@@ -24,7 +24,7 @@ from pulse.timeutil import Window, resolve_window, window_for_week
 
 STAGES = ("ingest", "discover", "classify", "aggregate", "quotes", "compose", "validate", "publish", "draft")
 STOPPING_STATUSES = frozenset({RunStatus.FAILED, RunStatus.INSUFFICIENT_DATA, RunStatus.VALIDATION_FAILED})
-STAGE_MODULES = ("pulse.stages.ingest", "pulse.stages.themes")
+STAGE_MODULES = ("pulse.stages.ingest", "pulse.stages.themes", "pulse.stages.pulse")
 
 
 class MissingArtifact(Exception):

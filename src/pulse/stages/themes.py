@@ -34,7 +34,7 @@ RESUME_HINT = "run again after 00:00 UTC: pulse run --week {week} --from {stage}
 
 @register_stage("discover")
 def discover(context: RunContext) -> RunStatus | None:
-    eligible = _eligible(context)
+    eligible = eligible_reviews(context)
     needed = context.settings.themes.min_reviews
     if len(eligible) < needed:  # ING-6: stop before any LLM call
         context.report.sections["Taxonomy"] = (
@@ -54,8 +54,8 @@ def discover(context: RunContext) -> RunStatus | None:
 
 @register_stage("classify")
 def classify(context: RunContext) -> RunStatus:
-    taxonomy = _taxonomy(context)
-    eligible = _eligible(context)
+    taxonomy = stage_taxonomy(context)
+    eligible = eligible_reviews(context)
     result = _classify(context, eligible, taxonomy)
     if result.stopped_for_budget:
         done = len(eligible) - result.pending_after
@@ -67,8 +67,8 @@ def classify(context: RunContext) -> RunStatus:
 
 @register_stage("aggregate")
 def aggregate_stage(context: RunContext) -> RunStatus:
-    taxonomy = _taxonomy(context)
-    labels = _labels(context, taxonomy)
+    taxonomy = stage_taxonomy(context)
+    labels = stage_labels(context, taxonomy)
     agg = _aggregate(context, labels, taxonomy)
     threshold = context.settings.themes.rediscover_unthemed_threshold
     unthemed_high = needs_rediscovery(agg.actionable_unthemed_share, threshold)
@@ -97,7 +97,7 @@ def _rediscover(  # craftsman-ignore: WARN-PY001 (regex counts the return tuple)
     context: RunContext, old: Taxonomy, old_labels: dict[str, Classification]
 ) -> tuple[Taxonomy, dict[str, Classification], Aggregates] | RunStatus:
     """One rediscovery when the actionable unthemed share is high (D2, LLM-16), then reclassify."""
-    eligible = _eligible(context)
+    eligible = eligible_reviews(context)
     try:
         taxonomy = _discover_new(context, eligible)
     except DailyBudgetExhausted:
@@ -120,7 +120,7 @@ def _rediscover(  # craftsman-ignore: WARN-PY001 (regex counts the return tuple)
 
 
 def _discover_new(context: RunContext, eligible: list[Review]) -> Taxonomy:
-    settings, llm = context.settings, _llm(context)
+    settings, llm = context.settings, stage_llm(context)
     themes = settings.themes
     sample = stratified_sample(eligible, themes.discovery_sample, SAMPLE_SEED, settings.window.timezone)
     taxonomy = discover_taxonomy(
@@ -154,7 +154,7 @@ def _use_taxonomy(context: RunContext, taxonomy: Taxonomy) -> None:
 
 
 def _classify(context: RunContext, eligible: list[Review], taxonomy: Taxonomy) -> ClassifyResult:
-    llm, settings = _llm(context), context.settings.llm
+    llm, settings = stage_llm(context), context.settings.llm
     chunk_size = settings.classify_chunk_size
     result = classify_reviews(llm, context.store, eligible, taxonomy, chunk_size=chunk_size)
     context.state["classifications"] = result.classifications
@@ -194,29 +194,29 @@ def _aggregate(context: RunContext, labels: dict[str, Classification], taxonomy:
     )
 
 
-def _eligible(context: RunContext) -> list[Review]:
+def eligible_reviews(context: RunContext) -> list[Review]:
     if "eligible" not in context.state:
         since, until = window_bounds_utc(context.window)
         context.state["eligible"] = context.store.reviews_between(since, until, eligible_only=True)
     return context.state["eligible"]
 
 
-def _taxonomy(context: RunContext) -> Taxonomy:
+def stage_taxonomy(context: RunContext) -> Taxonomy:
     if "taxonomy" not in context.state:  # resumed with --from: read what discover saved
         context.state["taxonomy"] = context.load_artifact("taxonomy.json", Taxonomy)
     return context.state["taxonomy"]
 
 
-def _labels(context: RunContext, taxonomy: Taxonomy) -> dict[str, Classification]:
+def stage_labels(context: RunContext, taxonomy: Taxonomy) -> dict[str, Classification]:
     if "classifications" not in context.state:
-        ids = [review.review_id for review in _eligible(context)]
+        ids = [review.review_id for review in eligible_reviews(context)]
         context.state["classifications"] = context.store.get_classifications(
             ids, taxonomy.version, prompt_version()
         )
     return context.state["classifications"]
 
 
-def _llm(context: RunContext) -> object:
+def stage_llm(context: RunContext) -> object:
     if context.llm is None:
         raise LLMError("this stage needs an LLM; set GROQ_API_KEY in .env")
     return context.llm

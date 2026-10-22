@@ -2121,32 +2121,39 @@ Expected: all passed.
 *Report*
 - Report sections: **Pulse** (the rendered Markdown), **Validation** (gate results and the retries used) and **Quotes** (any fallbacks).
 
-- [ ] **Step 1: Write the failing tests** (`FakeLLM` for every stage; the pipeline runs from `ingest`)
+- [x] **Step 1: Write the failing tests** (`FakeLLM` for every stage; the pipeline runs from `ingest`)
 
 ```python
 def test_dry_run_produces_validated_pulse(...): ...      # VALIDATED; pulse.md ≤ 250 words; all artifacts present
 def test_validation_failure_keeps_artifacts_and_stops(...): ...   # OPS-4: 19-word summaries → VALIDATION_FAILED; 3 compose calls; V5 in validation.json
-def test_v3_failure_reruns_quotes(...): ...              # route "quotes" → quotes handler called again
+def test_quote_routed_failure_reruns_quotes(...): ...    # route "quotes" (as built: triggered by V6) → quotes handler called again
 def test_quote_unavailable_fails_validation(...): ...    # QUO-3 at pipeline level
 def test_resume_from_compose_with_missing_quotes_errors_clearly(...): ...   # OPS-1
 def test_resume_from_compose_reuses_saved_quotes(...): ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_pipeline_pulse.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `stages/pulse.py`**
+- [x] **Step 3: Implement `stages/pulse.py`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_pipeline_pulse.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: run quotes, compose and validate stages with routed retries"`
+
+> **As built (2026-10-22):**
+> - **Retry loop:** lives in the `validate` stage. `quotes` and `compose` each run once as their own stages; on a failed gate, `validate` re-runs what `route` names (a quote re-run uses the attempt number as the pool seed, so the pools reorder) and composes again with `"<code>: <message>"` lines as feedback.
+> - **Test rename:** the plan's `test_v3_failure_reruns_quotes` is `test_quote_routed_failure_reruns_quotes`. V3 can't be produced through the pipeline, because `select_quotes` already verifies every quote, so the test reaches the same `"quotes"` route through V6 (an email in a summary).
+> - **Privacy:** the report's **Pulse** section shows the rendered pulse only when every gate passed; otherwise it says the draft is in `pulse.md` (`runs/` is git-ignored).
+> - **Artifacts:** `quotes.json` holds `quotes`, the candidate `pools` (review IDs per theme) and `fallbacks`; `validation.json` holds `passed` and `issues`. On resume, `aggregates.json` is rebuilt into `Aggregates` with the run's window.
+> - **Shared helpers:** `stages/themes.py` exposes `eligible_reviews`, `stage_taxonomy`, `stage_labels` and `stage_llm` for these stages.
 
 ---
 
