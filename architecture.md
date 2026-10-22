@@ -198,7 +198,7 @@ A new version gets new theme IDs, and the run report shows how old themes map to
 - The output schema allows `theme_id ∈ taxonomy ∪ {unthemed}` and adds a `sentiment` field (`negative | mixed | positive`) for each review.
 - **Incremental caching:** results are keyed by `(review_id, taxonomy_version, prompt_version)`. A weekly run only classifies reviews it hasn't seen before, or reviews that were edited.
 - **Transport:** synchronous Groq calls, paced by a rate limiter to stay within the free plan's tokens per minute. Results are saved after **every chunk**.
-- **Daily budget (LLM-13):** usage is persisted per UTC day. When the next chunk would exceed the day's budget, which keeps `llm.daily_token_reserve` back for quotes and compose, the stage stops cleanly. `pulse run --from classify` resumes from the cache the next day. A first backfill of about 2,200 reviews takes two days.
+- **Daily budget (LLM-13):** usage is persisted per UTC day. When the next chunk would exceed the day's budget, which keeps `llm.daily_token_reserve` back for quotes and compose, the stage stops cleanly. `pulse run --from classify` resumes from the cache the next day. A first backfill of about 2,200 reviews takes about three days: the observed cost is about 180 tokens per review, reasoning included.
 - **Interruption (OPS-6):** at most one chunk is lost; the cache holds the rest.
 - **Checks:**
   - Unknown review IDs in a response are dropped.
@@ -397,11 +397,11 @@ Every LLM stage returns JSON that matches a schema. It is sent as `response_form
 
 | Item | Assumption |
 |---|---|
-| First backfill | 2,177 eligible reviews × ~37 tokens of text, in 44 chunks of ~5.5K tokens including the output allowance ≈ 240K tokens |
+| First backfill | 2,177 eligible reviews × ~37 tokens of text, in 44 chunks of ~5.5K tokens including the output allowance ≈ 240K tokens estimated; about 390K observed (≈180 per review, with reasoning) |
 | Weekly increment | 115–274 new eligible reviews ≈ 15–30K tokens |
 | Price | $0 on the free tier; `llm.pricing` lets a paid plan be costed later |
 
-At 200K tokens a day, the first backfill finishes over **two days**, and weekly runs fit in one. The run report prints tokens by stage and the tokens left today for each model.
+At 200K tokens a day, the estimate gave **two days** for the first backfill. **Observed (2026-10-22):** about 180 tokens per classified review, reasoning included, so about **three days**. Weekly runs fit in one. The run report prints tokens by stage and the tokens left today for each model.
 
 ---
 

@@ -205,7 +205,7 @@ The first draft of this catalog found 12 gaps. Each now has an owning task and a
 | OPS-6 | Process dies during classification | Results are saved after every chunk and daily token usage is persisted; the next run sends only pending reviews | M | ✅ | 3.3 `test_interrupted_classification_resumes_from_cache`, 3.1 `test_daily_usage_persists_across_clients` |
 | OPS-7 | Prompt or config change between runs | Cache keyed by `prompt_version`, so reclassification happens and its cost is visible | L | ✅ | 2.1 `test_classification_cache_is_keyed_by_versions` |
 | OPS-8 | `today` computed in UTC (01:00 IST Monday is still Sunday in UTC) | The CLI uses `today_in_tz(Asia/Kolkata)` | H | ✅ | 1.1 `test_today_in_tz_uses_ist`, 1.3 `test_fetch_uses_ist_today`, 2.4 `test_cli_today_uses_ist_date` |
-| OPS-9 | First run: no taxonomy and no cache | Full backfill, paced and spread over two days by the daily token budget | M | ✅ | 5.3 `test_full_run_delivers` |
+| OPS-9 | First run: no taxonomy and no cache | Full backfill, paced and spread over about three days by the daily token budget (observed 2026-10-22) | M | ✅ | 5.3 `test_full_run_delivers` |
 | OPS-10 | Groq key missing (`GROQ_API_KEY` not in the environment or `.env`) | `pulse doctor` fails its auth check | M | ✅ | 5.3 `test_doctor_fails_without_groq_key` |
 | OPS-11 | `--from classify` rebuilds `report.md` from only the stages it ran | Report state is saved to `report.json` and reloaded on resume, so the Import and Window sections survive | M | ✅ | 3.5 `test_resume_keeps_earlier_report_sections` |
 

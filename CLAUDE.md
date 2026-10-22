@@ -26,6 +26,12 @@ uv run pulse fetch app-store                       # download App Store reviews 
 uv run pulse fetch play-store                      # download Play Store reviews → data/raw/
 uv run pulse raw status                            # list raw files: mapping, rows, date range
 uv run pulse ingest --week 2026-W42                # normalise raw files into data/pulse.db; writes runs/<id>/report.md
+uv run pulse run --week 2026-W42 --until aggregate # ingest → discover → classify → aggregate (needs GROQ_API_KEY)
+uv run pulse run --week 2026-W42 --from classify --until aggregate  # resume after the daily token budget (next UTC day)
+uv run pulse rediscover --week 2026-W42           # new taxonomy version
+uv run pulse eval --export-gold 200               # gold set to label (git-ignored CSV + committed meta)
+uv run pulse eval --suite classification          # E-CLS-* against the labelled gold set (uses the day's tokens)
+uv run pulse eval --compare A B                   # improved / regressed / within noise
 ```
 
 ## Conventions
@@ -41,4 +47,5 @@ uv run pulse ingest --week 2026-W42                # normalise raw files into da
 - **Review sources:** Apple's public feed (`pulse fetch app-store`), Google Play through the `google-play-scraper` library (`pulse fetch play-store`), and third-party CSV exports in `data/raw/`. Keep the Play fetch light: newest first, a pause between pages, stop at the window start, a `max_reviews` cap, and never read author or reply fields.
 - **Keep docs current:** after every task or decision, update the affected docs, including the Status table and **As built** notes. At each phase checkpoint, refresh `docs/decision-ledger.md` from the git-ignored ledger, so the project survives a machine change.
 - **Google:** only through MCP tools (`src/pulse/deliver/`). No `google-*` client libraries; the one allowed `google-*` package is `google-play-scraper`, which is not a Google API client. A test enforces this.
+- **Where we are:** read the **Status** table and **Handoff** in `implementation.md` first. A long run may be mid-backfill, and resuming means rerunning with `--from classify` the next UTC day.
 - **Settings:** all tunables live in `config/pulse.yaml` and are validated by `src/pulse/config.py`. Unknown keys, missing or unknown `llm.stages`, and out-of-range numbers (e.g. a share written as `20` instead of `0.20`) are load errors. Tests use the fixtures in `tests/conftest.py`. Any test that touches the filesystem must use `tmp_settings` (`settings` has the real repo paths).

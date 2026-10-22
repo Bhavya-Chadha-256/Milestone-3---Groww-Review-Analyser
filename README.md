@@ -24,6 +24,14 @@ The repository holds everything except review data and secrets.
    uv run pulse ingest               # writes data/pulse.db and runs/<id>/report.md
    ```
 
+## Weekly run (Phase 3 onward)
+
+```bash
+uv run pulse run --week 2026-W42 --until aggregate   # themes for the week (needs GROQ_API_KEY in .env)
+```
+
+The free Groq tier allows about 200K tokens a day. A first run classifies the whole 12-week window, takes about three days, and stops cleanly each day with `daily_token_budget`. Each following day, continue with `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Later weekly runs fit in one day. Results are in `runs/<run_id>/report.md`.
+
 ## Where things live
 
 | Path | In git? | What it is |
@@ -33,7 +41,9 @@ The repository holds everything except review data and secrets.
 | `.env` | **no** | your secrets |
 | `data/raw/*.csv` | **no** | raw review exports from `pulse fetch` |
 | `data/pulse.db` | **no** | scrubbed, normalised reviews (SQLite), rebuilt by `pulse ingest` |
-| `runs/<run_id>/` | **no** | per-run `report.md` and `manifest.json` |
+| `runs/<run_id>/` | **no** | per-run `report.md`, `report.json`, `manifest.json`, `taxonomy.json`, `aggregates.json` |
+| `evals/gold/*.csv` | **no** | the human-labelled gold set (real, scrubbed review text); back it up privately |
+| `evals/gold/*.meta.json` | yes | gold-set metadata (taxonomy version, κ, annotators) |
 
 ## Test data is made up
 

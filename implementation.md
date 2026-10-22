@@ -23,29 +23,51 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 done; live checkpoint run in progress | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 built (315 tests pass, ruff clean); final review done: **with fixes (1 Critical, 6 Important), fix pass pending**; live checkpoint backfill on day 1 of ~3 | `phase-3-themes` (local, not pushed) | Groq free tier. Discovery produced taxonomy v1 with 5 themes. See the Handoff for the next steps. |
 | 4–6 | Not started | — | — |
 
-### Handoff (for a new session, as of 2026-10-21, after Phase 2)
+### Handoff (for a new session, as of 2026-10-22, mid-Phase 3)
 
 **Where things stand**
-- `main` = tag `phase-2`, which includes Phases 0–2 and Task 1.4 (Play fetch).
-- 210 tests pass and ruff is clean.
-- **`data/raw/`** (git-ignored) holds:
-  - 2 App Store exports: 200 rows, 100 unique reviews, 10 Sep – 5 Oct 2026;
-  - 1 Play fetch: 13,057 reviews, 27 Jul – 20 Oct 2026.
-- **`data/pulse.db`** holds the 12,978 reviews of the W42 window (27 Jul – 18 Oct). They come from 13,157 unique fetched reviews, minus the 179 posted on 19–20 Oct.
-  - 2,177 are **eligible for themes** (2,136 Play + 41 App Store).
-  - 10,801 are stored and counted but excluded: 10,363 `too_short`, 438 `unsupported_language`.
+- **Branches:**
+  - `main` matches GitHub `origin/main` (commit `9da3352`): Phases 0–2 plus Task 1.4, published as one clean commit.
+  - The local branch `archive/full-history` holds the pre-publication history. **Never push it.**
+- **`phase-3-themes`** (local, not pushed) holds Tasks 3.1–3.6 implemented test-first; 315 tests pass and ruff is clean. It merges into `main` only at the Phase 3 checkpoint.
+- **Data:**
+  - **`data/raw/`** (git-ignored) holds 2 App Store exports (100 unique reviews, 10 Sep – 5 Oct 2026) and 1 Play fetch (13,057 reviews, 27 Jul – 20 Oct 2026).
+  - **`data/pulse.db`** holds the 12,978 reviews of the W42 window. 2,177 are eligible for themes (2,136 Play + 41 App Store); 10,801 are stored but excluded (10,363 `too_short`, 438 `unsupported_language`).
+- **Groq:** the key is in `.env` (git-ignored) and was verified live: both models are available, and the headers show 8,000 TPM and 1,000 RPD.
+- **Live checkpoint run, day 1:**
+  - **Run:** `uv run pulse run --week 2026-W42 --until aggregate`, started 2026-10-22 at about 09:09 UTC. Its run ID is `2026-W42-20261022T090923`, and its artifacts are in `runs/2026-W42-20261022T090923/`.
+  - **Discovery** finished with **taxonomy v1, 5 themes:** `support_account` Support & Account, `app_performance` App Performance, `charges_fees` Charges & Fees, `trading_experience` Trading Experience, `mutual_funds_sip` Mutual Funds & SIP. They match finding D3.
+  - **Classification** was running: 350 of 2,177 reviews classified after 17 calls and about 96K tokens at the last check (the process was still running at handover). It is expected to stop at the daily budget with status `FAILED` and the warning `daily_token_budget: … --from classify`. **That is the planned outcome, not an error.**
+  - **Observed token use** is about **180 tokens per classified review** including reasoning, against the plan's estimate of 80, plus about 39K for discovery. The backfill therefore takes about **3 days**, not 2. Recalibrate `REVIEW_OUTPUT_TOKENS` / `estimate_classify_tokens` from the finished run (a deferred minor).
+- **Final review: done, "with fixes" (1 Critical, 6 Important, 10 Minor); the fix pass has not started.** The full list is in the ledger (`Final: TODO …` lines, also in `docs/decision-ledger.md`):
+  - **C1 (Critical):** the "rediscover once" guard is held only in memory, so every `--from classify` resume can rediscover again and the backfill never finishes. **Fix C1 before resuming the live run.**
+  - **I1:** a 429 can sleep for hours, then fail without a resume hint.
+  - **I2:** a 50-review chunk larger than `tpm` stops classification permanently.
+  - **I3:** the eval suite scores infrastructure failures as wrong answers.
+  - **I4:** `PROMPT_VERSION` is hard-coded, so bumping the prompt doesn't invalidate the cache.
+  - **I5:** a same-day eval rerun overwrites the baseline.
+  - **I6:** `load_gold` doesn't validate the human labels.
+  - **Also cheap to fix:** the resume hint lacks `--week` and `--until aggregate`; resumed reports keep stale warnings; the 2-character names `f1` and `ci` break the naming rule.
 
-**For Phase 3:** the plan was revised from the data on 2026-10-21. Read **Data findings that shape Phase 3** (D1–D8) at the top of Phase 3 first. It covers eligible-only themes with window totals, the actionable `unthemed` share, data-informed seed hints, significance-gated trend arrows, the sample strata, and resume keeping the report.
+**Next steps (in order)**
+0. **Fix pass first (on `phase-3-themes`):** fix C1 and I1–I6, plus the cheap extras, each with a test that fails first, and run the full suite. C1 must land before step 2.
+1. **Check day 1.** Read `runs/2026-W42-20261022T090923/report.md` (the Classification section and Warnings), or run `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`. If the process died, simply resume (step 2): the cache keeps every finished chunk.
+2. **Each following day, after 00:00 UTC:** run `uv run pulse run --week 2026-W42 --from classify --until aggregate` until the status is `AGGREGATED`, about 2 more days. Don't run evals on those days, because they share the daily budget.
+3. **Check the result** in `report.md` → **Top themes**: 3–5 themes with names of at most 4 words (E-TAX-4), `actionable_unthemed_share` ≤ 0.20 (E-TAX-1), and no `broad_theme:` warning. If one appears, revise `discover.md` and run `pulse rediscover`.
+4. **Final review:** done; its fixes are step 0. No second review is needed. The fix-pass tests are the proof.
+5. **Gold set (manual):**
+   1. Run `uv run pulse eval --export-gold 200`.
+   2. Two people label `gold_theme` independently, using the praise rule; they must read Hinglish.
+   3. Compute κ (it must be ≥ 0.70) and adjudicate disagreements.
+   4. Fill in `evals/gold/gold_v1.meta.json`.
+   5. On a day with no backfill, run `uv run pulse eval --suite classification` (target E-CLS-1 ≥ 0.80).
+   6. The gold CSV is git-ignored, so **back it up privately**.
+6. **Close the phase:** merge `phase-3-themes` into `main`, `git tag phase-3`, refresh `docs/decision-ledger.md`, scan for keys and review text, then `git push origin main`.
 
-**LLM provider (2026-10-22):** Phase 3 is re-planned for **Groq's free tier** (Task 3.1): `openai/gpt-oss-120b` for the pipeline and `qwen/qwen3.8-27b` for judges, with strict JSON-schema outputs, rate limiting and a persisted daily token budget. The first classification backfill spans two days (D7). Put the key in `.env` as `GROQ_API_KEY`, then start Task 3.1.
-
-**How to resume**
-1. **On a new machine,** follow README.md, "Set up on any machine": install uv, `uv sync`, `cp .env.example .env`, then fetch and ingest. On the original Mac, `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`.
-2. Refresh the data: `uv run pulse fetch app-store && uv run pulse fetch play-store && uv run pulse ingest`.
-3. `git switch -c phase-3-themes main`, then start Task 3.1 with superpowers:executing-plans. The ledger, with every ruling and deferred minor, is at `.superpowers/sdd/implementation/progress.md` (git-ignored). A copy is committed at `docs/decision-ledger.md`; on a new machine, seed the ledger from it.
+**How to resume on a new machine:** follow README.md, "Set up on any machine": install uv, `uv sync`, `cp .env.example .env` (and paste the key), then fetch and ingest. On the original Mac, run `export PATH="$HOME/Library/Python/3.9/bin:$PATH"` first. Work continues with superpowers:executing-plans. The ledger is `.superpowers/sdd/implementation/progress.md` (git-ignored); a committed copy is in `docs/decision-ledger.md`, so seed the ledger from it on a new machine.
 
 **Deferred minors** (in the ledger):
 - **Phase 1:**
@@ -67,9 +89,11 @@ Update this table whenever a task or phase changes state.
   - The obfuscated-email pattern redacts prose such as "at home dot com".
   - A lowercase IFSC is missed.
   - Two runs started in the same UTC second collide on `run_id`.
+- **Phase 3:**
+  - `estimate_classify_tokens` assumes about 80 tokens per review; the live run used about 180, because reasoning counts too. Recalibrate it from the finished backfill.
 
 **Waiting on the user**
-- **A Groq API key in `.env`** (`GROQ_API_KEY=`; template in `.env.example`) before Phase 3. There is no Anthropic key, so on 2026-10-21 the owner chose Groq's free tier.
+- Two people to label the 200-review gold set (Phase 3 checkpoint).
 - The Workspace MCP server choice and the recipient address, before Phase 5.
 
 **Working agreements**
@@ -1218,6 +1242,8 @@ These come from the W42 window in `data/pulse.db` (27 Jul – 18 Oct 2026): 12,9
 | D5 | **The latest week is small.** W42 has 135 eligible reviews, 115–274 per week across the window. One review is 0.74 points of share, and a 15% theme has a standard error of about 3.1 points. The planned ±2-point arrow would flip on noise. | An arrow shows only when the change is at least `themes.trend_z` (2.0) standard errors. Otherwise `→` (Task 3.4, AGG-13). |
 | D6 | **App Store is thin.** 41 of 2,177 eligible reviews (1.9%), and none in W41–W42. A sample stratified by `(rating, source, week)` would take all 41, which would leave none for the gold set. | Discovery strata become `(rating, iso_week)`, so source stays roughly proportional (Task 3.2, LLM-15). |
 | D7 | **Volume and tokens.** About 37 tokens per eligible review and 81K in total. The first run classifies 2,177 reviews: 44 chunks of about 5.5K tokens (including the output allowance), about 240K tokens in all. Weekly increments are 115–274 reviews. Classifying all 12,978 would take about 1.4M tokens. | On Groq's free tier (8K tokens/min, 200K/day) the first backfill spans **two days** and resumes from the cache (Task 3.3). Discovery runs in 100-review passes, so no request exceeds the per-minute limit (Task 3.2). A later eligibility change must be sized in days, not dollars. |
+
+> **Observed live (2026-10-22, day 1 of the backfill):** discovery took 7 calls and about 39K tokens. Classification used about **180 tokens per review**, reasoning included, not the 80 estimated. So the first backfill of 2,177 reviews needs about 390K tokens, about **3 days** at 200K/day. Weekly increments (115–274 reviews) still fit in one day.
 | D8 | **Language and length.** Eligible reviews are 1,996 `en` and 181 `hinglish` (8.3%). Median length is 18 words (mean 26, max 239). 1,963 fall in the 8–60-word quote pool. Only the 41 App Store reviews have titles. Duplicate text among eligible reviews: 0 (6,972 among all). | Prompts state that reviews may be Hinglish, and gold labellers must read it (Task 3.6). Duplicate share (M-DATA-3) is over eligible reviews. |
 
 
@@ -1530,7 +1556,7 @@ Expected: all passed.
 > - **System prompt:** `classify.md` plus a JSON catalogue of the taxonomy's themes.
 > - **Extra tests:** `test_single_review_that_truncates_is_unclassified`, `test_estimate_classify_tokens_scales_with_chunks`.
 
-**Expected load (D7):** the first real run has about 2,177 pending reviews, which is 44 chunks and about 240K tokens. At 200K tokens a day, minus the 20K reserve, it finishes over **two days**. The second day is `pulse run --from classify`, and the cache keeps the first day's work. Pacing is about 1–2 requests a minute, so about 30 minutes of classification a day. Later weeks add 115–274 reviews, about 15–30K tokens, in one sitting.
+**Expected load (D7):** the first real run has about 2,177 pending reviews, which is 44 chunks and was estimated at about 240K tokens. At 200K tokens a day, minus the 20K reserve, that would finish over two days. **Observed on 2026-10-22:** about 180 tokens per review, so about 3 days. The second day is `pulse run --from classify`, and the cache keeps the first day's work. Pacing is about 1–2 requests a minute, so about 30 minutes of classification a day. Later weeks add 115–274 reviews, about 15–30K tokens, in one sitting.
 
 ---
 
@@ -1781,7 +1807,7 @@ Expected: all passed.
 - [ ] `uv run pytest -v`: all passed.
 - [ ] Refresh the data: `uv run pulse fetch app-store && uv run pulse fetch play-store && uv run pulse ingest`.
 - [ ] `uv run pulse run --until aggregate` for the last complete week. `report.md` lists 3–5 themes, each named in ≤4 words, a top 3, the cost, and the basis line (eligible vs window totals). E-TAX-4 is met.
-  - Expected (D7): classification stops at the daily budget on day 1 (`daily_token_budget`). On day 2, `uv run pulse run --from classify --until aggregate` finishes it. Cost $0.
+  - Expected (D7): classification stops at the daily budget on day 1 (`daily_token_budget`). On each following day (about 2 more), `uv run pulse run --week 2026-W42 --from classify --until aggregate` continues it until `AGGREGATED`. Cost $0.
   - `actionable_unthemed_share` ≤ 0.20 (E-TAX-1).
   - Any `broad_theme:<id>` warning means revising the discovery prompt (D4) and rediscovering before labelling the gold set.
 - [ ] **Label the gold set (manual).**
