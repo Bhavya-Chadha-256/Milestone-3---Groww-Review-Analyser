@@ -24,7 +24,7 @@ from pulse.timeutil import Window, resolve_window, window_for_week
 
 STAGES = ("ingest", "discover", "classify", "aggregate", "quotes", "compose", "validate", "publish", "draft")
 STOPPING_STATUSES = frozenset({RunStatus.FAILED, RunStatus.INSUFFICIENT_DATA, RunStatus.VALIDATION_FAILED})
-STAGE_MODULES = ("pulse.stages.ingest",)
+STAGE_MODULES = ("pulse.stages.ingest", "pulse.stages.themes")
 
 
 class MissingArtifact(Exception):
@@ -174,6 +174,8 @@ def run_pipeline(  # craftsman-ignore: PY003, WARN-PY001 (plan interface; hint o
             llm=llm,
             gateway_factory=gateway_factory,
         )
+        if opts.from_stage:  # OPS-11: keep the sections earlier stages wrote
+            context.report = RunReport.load_state(context.run_dir / "report.json")
         status = _run_stages(context, stages)
         return RunOutcome(run_id, status, context.run_dir)
 
@@ -206,5 +208,6 @@ def _run_stages(context: RunContext, stages: list[str]) -> RunStatus:
         raise
     finally:
         context.report.write(context.run_dir / "report.md", f"Run report — {context.run_id}")
+        context.report.save_state(context.run_dir / "report.json")
         context.store.set_run_status(context.run_id, status, **context.report.counts)
     return status

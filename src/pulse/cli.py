@@ -13,6 +13,8 @@ from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
 from pulse.ingest.base import ReviewSource
 from pulse.ingest.file_import import FileImportSource
+from pulse.llm.client import GroqLLM
+from pulse.llm.schema import LLMError
 from pulse.models import RunStatus
 from pulse.pipeline import (
     STAGES,
@@ -171,13 +173,15 @@ class Deps:
     gateway_factory: Any = None
 
 
-def build_dependencies(settings: Settings) -> Deps:
-    """Phase 2 wires the store and the file source; later phases add the LLM client and the MCP gateway."""
+def build_dependencies(settings: Settings, *, need_llm: bool = False) -> Deps:
+    """The store and file source, plus the Groq client when a run reaches an LLM stage (MCP: Phase 5)."""
     paths = settings.paths
     sources: list[ReviewSource] = []
     if settings.sources.file.enabled:
         sources.append(FileImportSource(Path(paths.raw), Path(paths.mappings)))
-    return Deps(store=Store(Path(paths.db)), sources=sources)
+    store = Store(Path(paths.db))
+    llm = GroqLLM(settings.llm, store) if need_llm else None  # raises LLMError when the key is missing
+    return Deps(store=store, sources=sources, llm=llm)
 
 
 @app.command("run")
@@ -194,6 +198,15 @@ def run_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on 
     _execute(
         ctx, week, from_stage, "validate" if dry_run else until_stage, force=force, rediscover=rediscover
     )
+
+
+@app.command("rediscover")
+def rediscover_command(
+    ctx: typer.Context,
+    week: str | None = typer.Option(None, "--week", help="ISO week to report, e.g. 2026-W42."),
+) -> None:
+    """Discover a new theme taxonomy for the window (`run --until discover --rediscover`)."""
+    _execute(ctx, week, None, "discover", rediscover=True)
 
 
 @app.command("ingest")
@@ -222,7 +235,11 @@ def _execute(  # craftsman-ignore: WARN-PY001 (keyword flags forwarded from the 
         started_at=now,
         **flags,
     )
-    deps = build_dependencies(settings)
+    try:
+        deps = build_dependencies(settings, need_llm=STAGES.index(until_stage) >= STAGES.index("discover"))
+    except LLMError as error:  # OPS-10
+        typer.echo(str(error))
+        raise typer.Exit(EXIT_REFUSED) from error
     try:
         outcome = run_pipeline(
             settings,

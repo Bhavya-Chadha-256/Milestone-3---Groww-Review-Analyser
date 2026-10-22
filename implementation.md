@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.4 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.5 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
@@ -1647,7 +1647,7 @@ Expected: all passed.
 - **Top themes**: a basis line ("From N eligible reviews (8+ words, English/Hinglish) of M in the window. Window average x.x★; eligible average y.y★"), then a table of name, count, share, mean rating, 1–2★ share, trend arrow with pts, and a low-sample flag. Also both `unthemed` shares.
 - **LLM usage**: `by_stage` tokens, served models, tokens left today per model, and the cost as `$x.xx` (`$0.00` on the free tier)
 
-- [ ] **Step 1: Write the failing tests** (`FakeLLM` and fixture reviews)
+- [x] **Step 1: Write the failing tests** (`FakeLLM` and fixture reviews)
 
 ```python
 def test_until_aggregate_writes_taxonomy_and_aggregates(...): ...        # AGGREGATED; taxonomy.json, aggregates.json; "Top themes" in report.md
@@ -1662,21 +1662,30 @@ def test_rediscovery_uses_actionable_unthemed_share(...): ...            # LLM-1
 def test_resume_keeps_earlier_report_sections(...): ...                  # OPS-11: --from classify keeps Import and Window
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_pipeline_themes.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `stages/themes.py` and the CLI changes**
+- [x] **Step 3: Implement `stages/themes.py` and the CLI changes**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_pipeline_themes.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: run discover, classify and aggregate stages with rediscovery and guards"`
+
+> **As built (2026-10-22):**
+> - **CLI and key:** `build_dependencies(settings, *, need_llm=False)` builds the `GroqLLM` only when the run reaches `discover` or later, so `pulse ingest` never needs a key. A missing key exits 2 with a message naming `GROQ_API_KEY` (OPS-10). `pulse rediscover [--week]` runs `--until discover --rediscover`.
+> - **Resume:** the report state is saved to `runs/<id>/report.json` next to `report.md`. With `--from`, the pipeline loads it first (OPS-11). A resumed stage reads `taxonomy.json` and pulls cached classifications from the store.
+> - **Daily budget:** hitting it in discovery or rediscovery fails the run with `daily_token_budget: …; run again after 00:00 UTC with --from discover`, just as classification does with `--from classify`.
+> - **Report:** a **Classification** section (cache hits, sent, the token estimate, tokens left today, unclassified) was added.
+> - **Run summary:** it records `taxonomy_version`, `classified`, `unclassified`, `served_models`, `tokens_total` and `daily_tokens_left`. The rediscovery test checks the store and this summary instead of `manifest.json`, which ingest writes before discovery runs.
+> - **Sample seed:** discovery uses seed 7 (evaluation §5).
+> - **Extra tests:** `test_rediscover_command_sets_flags`, `test_llm_stages_without_groq_key_exit_2`, `test_build_dependencies_adds_llm_only_when_asked`.
 
 ---
 

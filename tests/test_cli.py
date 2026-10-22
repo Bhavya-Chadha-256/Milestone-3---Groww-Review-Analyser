@@ -28,7 +28,9 @@ def capture_run_options(  # craftsman-ignore: PY003 (hint on closing line)
         return outcome or RunOutcome("2026-W42-x", RunStatus.INGESTED, Path("runs/2026-W42-x"))
 
     monkeypatch.setattr(cli, "run_pipeline", fake_run)
-    monkeypatch.setattr(cli, "build_dependencies", lambda settings: cli.Deps(store=None, sources=[]))
+    monkeypatch.setattr(
+        cli, "build_dependencies", lambda settings, **kwargs: cli.Deps(store=None, sources=[])
+    )
     return seen
 
 
@@ -88,3 +90,29 @@ def test_build_dependencies_uses_file_source(tmp_settings: Settings) -> None:
     deps = cli.build_dependencies(tmp_settings)
     assert [source.name for source in deps.sources] == ["file"]
     assert Path(tmp_settings.paths.db).is_file()
+
+
+def test_rediscover_command_sets_flags(  # craftsman-ignore: PY003 (hint on closing line)
+    monkeypatch: pytest.MonkeyPatch, tmp_settings: Settings, tmp_path: Path
+) -> None:
+    seen = capture_run_options(monkeypatch)
+    result = invoke(tmp_settings, tmp_path, "rediscover", "--week", "2026-W42")
+    assert result.exit_code == 0, result.output
+    assert seen.opts is not None and (seen.opts.until_stage, seen.opts.rediscover) == ("discover", True)
+
+
+def test_llm_stages_without_groq_key_exit_2(  # craftsman-ignore: PY003 (hint on closing line)
+    monkeypatch: pytest.MonkeyPatch, tmp_settings: Settings, tmp_path: Path
+) -> None:  # OPS-10
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "ENV_FILE", tmp_path / "absent.env")
+    result = invoke(tmp_settings, tmp_path, "run", "--week", "2026-W42", "--until", "classify")
+    assert result.exit_code == 2 and "GROQ_API_KEY" in result.output
+
+
+def test_build_dependencies_adds_llm_only_when_asked(  # craftsman-ignore: PY003 (hint on closing line)
+    monkeypatch: pytest.MonkeyPatch, tmp_settings: Settings
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_not_a_real_key")
+    assert cli.build_dependencies(tmp_settings).llm is None
+    assert cli.build_dependencies(tmp_settings, need_llm=True).llm is not None
