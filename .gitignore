@@ -2,6 +2,8 @@
 data/
 runs/
 evals/results/
+# Gold labels hold real (scrubbed) review text: keep them out of the public repo.
+evals/gold/*.csv
 
 # Secrets
 .env

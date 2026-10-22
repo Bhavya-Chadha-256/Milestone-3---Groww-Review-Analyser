@@ -36,7 +36,7 @@ L1 and L2 protect each weekly pulse. L3 protects the system from regressions. L4
 
 ## 3. Datasets
 
-All datasets live in `evals/` (eval code lives in `src/pulse/evals/`), are versioned (`_v1`, `_v2`), and contain **scrubbed or synthetic text only**.
+All datasets live in `evals/` (eval code lives in `src/pulse/evals/`), are versioned (`_v1`, `_v2`), and contain **scrubbed or synthetic text only**. Gold and drift CSVs hold real (scrubbed) review text, so they are git-ignored; their `*.meta.json` files are committed.
 
 | Dataset | Size | How it's built | Built in | Used by |
 |---|---|---|---|---|

@@ -116,3 +116,50 @@ def test_build_dependencies_adds_llm_only_when_asked(  # craftsman-ignore: PY003
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_not_a_real_key")
     assert cli.build_dependencies(tmp_settings).llm is None
     assert cli.build_dependencies(tmp_settings, need_llm=True).llm is not None
+
+
+def test_eval_export_gold_writes_csv(  # craftsman-ignore: PY003 (hint on closing line)
+    monkeypatch: pytest.MonkeyPatch, tmp_settings: Settings, tmp_path: Path
+) -> None:
+    from factories import make_review
+
+    from pulse.models import Taxonomy, Theme
+    from pulse.store import Store
+
+    store = Store(Path(tmp_settings.paths.db))
+    store.upsert_reviews([make_review(review_id=f"g{index:03d}") for index in range(30)])
+    themes = [
+        Theme(id=slug, name=slug, definition=slug, include_hints=[], exclude_hints=[])
+        for slug in ("a", "b", "c")
+    ]
+    store.save_taxonomy(
+        Taxonomy(
+            version=1,
+            themes=themes,
+            created_from_run="r",
+            created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            sample_review_ids=[],
+        )
+    )
+    monkeypatch.setattr(cli, "now_utc", lambda: datetime(2026, 10, 19, 5, 0, tzinfo=UTC))
+    gold = tmp_path / "gold" / "gold_v1.csv"
+    result = invoke(tmp_settings, tmp_path, "eval", "--export-gold", "20", "--gold", str(gold))
+    assert result.exit_code == 0, result.output
+    assert "20" in result.output and gold.is_file() and gold.with_suffix(".meta.json").is_file()
+
+
+def test_eval_compare_prints_verdicts(tmp_settings: Settings, tmp_path: Path) -> None:
+    from pulse.config import Pricing
+    from pulse.evals.runner import EvalRun
+    from pulse.llm.schema import UsageLedger
+
+    paths = []
+    for name in ("a", "b"):
+        run = EvalRun("classification", tmp_path / name, today="2026-10-22")
+        for index in range(20):
+            run.case(f"r{index}", {"gold": "x", "pred": "x"}, served_model="m", primary_model="m")
+        run.metric("E-CLS-1", 1.0, target=0.8, gate="blocking")
+        paths.append(run.finish(UsageLedger(), Pricing()))
+    result = invoke(tmp_settings, tmp_path, "eval", "--compare", str(paths[0]), str(paths[1]))
+    assert result.exit_code == 0, result.output
+    assert "E-CLS-1" in result.output and "within noise" in result.output

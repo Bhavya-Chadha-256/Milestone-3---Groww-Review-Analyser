@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.5 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 done; live checkpoint run in progress | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
@@ -1729,7 +1729,7 @@ Expected: all passed.
   - Records E-CLS-1 (with a paired-bootstrap CI), E-CLS-2, E-CLS-3, E-CLS-4 (majority baseline and κ), E-CLS-5, E-CLS-6 when gold sentiment exists, and E-CLS-7 (agreement between the two runs).
   - Runs the **oracle** check first: gold as predictions gives F1 = 1.0, or the suite aborts.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_macro_f1_includes_unthemed_class(): ...
@@ -1744,21 +1744,37 @@ def test_compare_marks_within_noise(tmp_path): ...
 def test_classification_suite_uses_temp_store(tmp_path): ...             # cached labels in the real store don't affect results
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_evals_classification.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `metrics.py`, `runner.py`, `gold.py`, `suites/classification.py` and the CLI `eval` command**
+- [x] **Step 3: Implement `metrics.py`, `runner.py`, `gold.py`, `suites/classification.py` and the CLI `eval` command**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_evals_classification.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add classification eval suite, gold export and run comparison"`
+
+> **As built (2026-10-22):**
+> - **Signatures that differ from the plan:**
+>   - The class list is `class_labels(taxonomy)`, not `CLASSES`.
+>   - `paired_bootstrap_ci(gold, pred_a, pred_b=None, *, classes, n=1000, seed=0)`: `classes` is keyword-only.
+>   - `load_gold(path, *, current_version)`; `GoldSet` also carries `sentiments`.
+>   - `export_gold(..., *, n, min_per_class, seed, path)`.
+>   - `run_classification_suite(..., *, gold_path=None, out_root=...)`.
+>   - `EvalRun.metric(..., higher_is_better=True)` (E-CLS-5 is "lower is better"), and `EvalRun.headline_cases()`.
+> - **Gold selection:** for each class, up to `min_per_class` reviews are picked first by their provisional label (the production classifications in the store for the current taxonomy). The rest are filled stratified by rating and source. Rows are sorted by `review_id`, so annotators can't see class clusters.
+> - **Shared helper:** the sampler's round-robin draw is now `analysis.sample.round_robin`, used by both discovery and gold export. The store gained `get_reviews(ids)`.
+> - **`compare`:** E-CLS-1 uses a paired bootstrap of the difference, recomputed from both runs' `cases.jsonl` (evaluation §9.1). Other metrics are within noise unless their stored CIs don't overlap.
+> - **Extra metric:** `E-CLS-4-majority-f1` is recorded next to κ.
+> - **Privacy:** `evals/gold/*.csv` is git-ignored, because the gold set holds real (scrubbed) review text and the repo is public. Only `*.meta.json` is committed. Back the labelled CSV up privately.
+> - **CLI:** `pulse eval --export-gold N [--gold PATH]`, `pulse eval --suite classification [--dataset gold|drift] [--gold PATH]`, `pulse eval --compare A B`.
+> - **Extra tests:** `test_missing_prediction_counts_as_wrong`, `test_get_reviews_returns_requested_ids`, `test_eval_export_gold_writes_csv`, `test_eval_compare_prints_verdicts`.
 
 ### Phase 3 checkpoint
 

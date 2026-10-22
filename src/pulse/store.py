@@ -106,6 +106,18 @@ class Store:
         )
         return [Review.model_validate_json(data) for (data,) in rows]
 
+    def get_reviews(self, review_ids: Iterable[str]) -> list[Review]:
+        """The stored reviews with these IDs, ordered by ID; unknown IDs are skipped."""
+        found: list[Review] = []
+        for chunk in _chunks(sorted(set(review_ids))):
+            rows = self.conn.execute(
+                f"SELECT data FROM reviews WHERE review_id IN ({_placeholders(len(chunk))}) "
+                "ORDER BY review_id",
+                chunk,
+            )
+            found += [Review.model_validate_json(data) for (data,) in rows]
+        return sorted(found, key=lambda review: review.review_id)
+
     # Taxonomies
 
     def save_taxonomy(self, taxonomy: Taxonomy) -> None:

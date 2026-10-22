@@ -142,3 +142,9 @@ def test_delivery_roundtrip(tmp_path: Path) -> None:
     store.save_delivery(delivery.model_copy(update={"doc_verified": True, "draft_id": "d1"}))
     saved = store.get_delivery("2026-W42")
     assert saved is not None and saved.doc_verified and saved.draft_id == "d1"
+
+
+def test_get_reviews_returns_requested_ids(tmp_path: Path) -> None:
+    store = Store(tmp_path / "pulse.db")
+    store.upsert_reviews([make_review(review_id="a"), make_review(review_id="b"), make_review(review_id="c")])
+    assert [review.review_id for review in store.get_reviews(["c", "a", "zz"])] == ["a", "c"]

@@ -11,6 +11,9 @@ from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
+from pulse.evals.gold import GOLD_PATH, export_gold
+from pulse.evals.runner import compare
+from pulse.evals.suites.classification import run_classification_suite
 from pulse.ingest.base import ReviewSource
 from pulse.ingest.file_import import FileImportSource
 from pulse.llm.client import GroqLLM
@@ -260,3 +263,45 @@ def _execute(  # craftsman-ignore: WARN-PY001 (keyword flags forwarded from the 
     typer.echo(f"report: {outcome.run_dir / 'report.md'}")
     if RunStatus(outcome.status) in STOPPING_STATUSES:
         raise typer.Exit(1)
+
+
+@app.command("eval")
+def eval_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on closing line)
+    ctx: typer.Context,
+    suite: str | None = typer.Option(None, "--suite", help="Suite to run: classification."),
+    dataset: str = typer.Option("gold", "--dataset", help="gold or drift."),
+    export_gold_count: int | None = typer.Option(
+        None, "--export-gold", min=1, help="Export N reviews to label."
+    ),
+    compare_runs: tuple[Path, Path] | None = typer.Option(None, "--compare", help="Compare two result dirs."),
+    gold: Path = typer.Option(GOLD_PATH, "--gold", help="Gold CSV path."),
+) -> None:
+    """Offline evals: export the gold set, run a suite, or compare two runs (evaluation.md)."""
+    settings = _settings(ctx)
+    if compare_runs:
+        for row in compare(*compare_runs):
+            typer.echo(f"{row.metric_id}: {row.a_value} → {row.b_value}  {row.verdict}")
+        return
+    if export_gold_count:
+        store = Store(Path(settings.paths.db))
+        taxonomy = store.latest_taxonomy()
+        if taxonomy is None:
+            typer.echo("No taxonomy yet: run `pulse run --until discover` first.")
+            raise typer.Exit(EXIT_REFUSED)
+        timezone = settings.window.timezone
+        window = resolve_window(today_in_tz(timezone, now_utc()), settings.window.weeks, timezone)
+        count = export_gold(store, window, taxonomy, n=export_gold_count, path=gold)
+        typer.echo(f"wrote {count} reviews to label: {gold} (meta: {gold.with_suffix('.meta.json')})")
+        return
+    if suite != "classification":
+        typer.echo("Use --suite classification, --export-gold N or --compare A B.")
+        raise typer.Exit(EXIT_REFUSED)
+    try:
+        deps = build_dependencies(settings, need_llm=True)
+    except LLMError as error:
+        typer.echo(str(error))
+        raise typer.Exit(EXIT_REFUSED) from error
+    out = run_classification_suite(
+        settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
+    )
+    typer.echo(f"results: {out}")

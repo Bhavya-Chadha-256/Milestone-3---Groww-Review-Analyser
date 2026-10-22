@@ -2,7 +2,7 @@
 
 import random
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable, Mapping
 
 from pulse.models import Review
 from pulse.timeutil import iso_week_of
@@ -18,15 +18,19 @@ def stratified_sample(reviews: Iterable[Review], n: int, seed: int, timezone: st
     for review in reviews:
         if review.excluded_reason is None and not review.is_duplicate_text:
             groups[(review.rating, iso_week_of(review.posted_at, timezone))].append(review)
-    rng = random.Random(seed)
-    queues = []
-    for key in sorted(groups):
-        members = sorted(groups[key], key=lambda review: review.review_id)
-        rng.shuffle(members)
-        queues.append(members)
-    sample: list[Review] = []
-    while len(sample) < n and any(queues):
-        for queue in queues:
-            if queue and len(sample) < n:
-                sample.append(queue.pop())
-    return sample
+    return round_robin(groups, n, random.Random(seed))
+
+
+def round_robin(groups: Mapping[Hashable, list[Review]], count: int, rng: random.Random) -> list[Review]:
+    """Up to `count` reviews, one per group per round in key order; groups are seeded-shuffled by ID."""
+    queues = [_shuffled(groups[key], rng) for key in sorted(groups)]
+    drawn: list[Review] = []
+    while len(drawn) < count and any(queues):
+        drawn += [queue.pop() for queue in queues if queue][: count - len(drawn)]
+    return drawn
+
+
+def _shuffled(members: list[Review], rng: random.Random) -> list[Review]:
+    ordered = sorted(members, key=lambda review: review.review_id)
+    rng.shuffle(ordered)
+    return ordered
