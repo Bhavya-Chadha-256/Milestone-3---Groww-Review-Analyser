@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pulse.analysis.sample import round_robin
 from pulse.evals.metrics import class_labels
-from pulse.llm.classify import PROMPT_VERSION
+from pulse.llm.classify import prompt_version
 from pulse.models import Review, Taxonomy
 from pulse.store import Store
 from pulse.timeutil import Window, window_bounds_utc
@@ -61,7 +61,7 @@ def export_gold(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hint on
     """Write `n` unlabelled reviews for annotation, plus the meta file; returns the number of rows."""
     pool = _pool(store, window, taxonomy)
     provisional = store.get_classifications(
-        [review.review_id for review in pool], taxonomy.version, PROMPT_VERSION
+        [review.review_id for review in pool], taxonomy.version, prompt_version()
     )
     rng = random.Random(seed)
     chosen = _top_up(pool, provisional, class_labels(taxonomy), min_per_class, n, rng)

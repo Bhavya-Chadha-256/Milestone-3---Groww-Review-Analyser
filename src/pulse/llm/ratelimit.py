@@ -11,7 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from pulse.config import RateLimits
-from pulse.llm.schema import DailyBudgetExhausted, LLMError
+from pulse.llm.schema import DailyBudgetExhausted, RequestTooLarge
 from pulse.store import Store
 
 WINDOW_SECONDS = 60.0
@@ -50,7 +50,7 @@ class RateLimiter:
     def acquire(self, tokens: int, *, keep_reserve: bool = False) -> None:
         """Wait until `tokens` fit the per-minute window; raise before sending if the day is used up."""
         if tokens > self.limits.tpm:
-            raise LLMError(
+            raise RequestTooLarge(
                 f"a {tokens}-token request can never fit limits.tpm ({self.limits.tpm}); send less per call"
             )
         used, requests = self.store.llm_usage(self.today(), self.model)

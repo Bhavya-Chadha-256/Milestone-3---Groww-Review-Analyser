@@ -42,6 +42,10 @@ class LLMSchemaError(LLMError):
     pass
 
 
+class RequestTooLarge(LLMError):
+    """A single request can never fit the per-minute token limit; send less per call (LLM-12)."""
+
+
 class DailyBudgetExhausted(LLMError):
     def __init__(self, used: int, limit: int) -> None:
         super().__init__(f"daily token budget exhausted: {used} of {limit} used")

@@ -2,7 +2,7 @@ import pytest
 
 from pulse.config import RateLimits
 from pulse.llm.ratelimit import RateLimiter, utc_day
-from pulse.llm.schema import DailyBudgetExhausted, LLMError
+from pulse.llm.schema import DailyBudgetExhausted, RequestTooLarge
 from pulse.store import Store
 
 MODEL = "openai/gpt-oss-120b"
@@ -80,7 +80,7 @@ def test_classify_reserve_keeps_tokens_for_later_stages(tmp_store: Store) -> Non
 
 def test_request_larger_than_tpm_is_rejected(tmp_store: Store) -> None:  # LLM-12
     limiter, _ = make_limiter(tmp_store)
-    with pytest.raises(LLMError, match="limits.tpm"):
+    with pytest.raises(RequestTooLarge, match="limits.tpm"):
         limiter.acquire(9_000)
 
 

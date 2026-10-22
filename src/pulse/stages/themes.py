@@ -16,10 +16,10 @@ from pulse.analysis.aggregate import (
 )
 from pulse.analysis.sample import stratified_sample
 from pulse.llm.classify import (
-    PROMPT_VERSION,
     ClassifyResult,
     classify_reviews,
     estimate_classify_tokens,
+    prompt_version,
     system_tokens,
 )
 from pulse.llm.discover import discover_taxonomy, needs_rediscovery
@@ -211,7 +211,7 @@ def _labels(context: RunContext, taxonomy: Taxonomy) -> dict[str, Classification
     if "classifications" not in context.state:
         ids = [review.review_id for review in _eligible(context)]
         context.state["classifications"] = context.store.get_classifications(
-            ids, taxonomy.version, PROMPT_VERSION
+            ids, taxonomy.version, prompt_version()
         )
     return context.state["classifications"]
 

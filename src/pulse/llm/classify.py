@@ -19,12 +19,12 @@ from pulse.llm.schema import (
     LLMRequest,
     LLMSchemaError,
     LLMTruncated,
+    RequestTooLarge,
     estimate_tokens,
 )
 from pulse.models import UNTHEMED, Classification, Review, Taxonomy
 from pulse.store import Store
 
-PROMPT_VERSION = "classify-v1"
 REVIEW_INPUT_TOKENS = 50  # ~37 tokens of text plus JSON framing (finding D7)
 REVIEW_OUTPUT_TOKENS = 30  # one {k, theme_id, sentiment} item plus a share of reasoning
 
@@ -37,6 +37,11 @@ class ClassifyResult:
     sent: int = 0
     stopped_for_budget: bool = False
     pending_after: int = 0
+
+
+def prompt_version() -> str:
+    """The `prompt_version` header of classify.md, so editing the prompt invalidates the cache (OPS-6)."""
+    return load_prompt("classify").version
 
 
 def make_classify_schema(theme_ids: Sequence[str]) -> type[BaseModel]:
@@ -59,7 +64,7 @@ def classify_reviews(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hi
     llm: object, store: Store, reviews: Sequence[Review], taxonomy: Taxonomy, *, chunk_size: int = 50
 ) -> ClassifyResult:
     cached = store.get_classifications(
-        [review.review_id for review in reviews], taxonomy.version, PROMPT_VERSION
+        [review.review_id for review in reviews], taxonomy.version, prompt_version()
     )
     pending = [review for review in reviews if review.review_id not in cached]
     result = ClassifyResult(classifications=dict(cached), from_cache=len(cached))
@@ -97,6 +102,7 @@ class _ChunkClassifier:
         self.taxonomy = taxonomy
         self.schema = make_classify_schema([theme.id for theme in taxonomy.themes])
         self.system = _system_prompt(taxonomy)
+        self.prompt_version = prompt_version()
 
     def classify(self, chunk: Sequence[Review]) -> tuple[dict[str, Classification], list[str]]:
         outcome = self._ask(chunk, refusal_split=True)
@@ -115,7 +121,7 @@ class _ChunkClassifier:
         user = f"Classify every review below. Return one item per key `k`.\n{payload}"
         try:
             output = self.llm.structured(LLMRequest("classify", self.system, user, self.schema))
-        except LLMTruncated:  # LLM-2: halve until a single review still truncates
+        except (LLMTruncated, RequestTooLarge):  # LLM-2, LLM-12: halve until a single review still fails
             return self._split(chunk, refusal_split) if len(chunk) > 1 else _Outcome(failed=_ids(chunk))
         except LLMRefusal:  # LLM-1: one split retry, then give up on those reviews
             can_split = refusal_split and len(chunk) > 1
@@ -128,7 +134,7 @@ class _ChunkClassifier:
                 theme_id=item.theme_id,
                 sentiment=item.sentiment,
                 taxonomy_version=self.taxonomy.version,
-                prompt_version=PROMPT_VERSION,
+                prompt_version=self.prompt_version,
             )
             for item in output.items
             if item.k in keys  # unknown keys are dropped

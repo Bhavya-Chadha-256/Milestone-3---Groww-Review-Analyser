@@ -9,13 +9,13 @@ from fakes import FakeLLM
 from pydantic import BaseModel
 
 from pulse.llm.classify import (
-    PROMPT_VERSION,
     classify_reviews,
     estimate_classify_tokens,
     make_classify_schema,
+    prompt_version,
 )
-from pulse.llm.prompts import DATA_RULE
-from pulse.llm.schema import LLMRefusal, LLMRequest, LLMTruncated
+from pulse.llm.prompts import DATA_RULE, Prompt, load_prompt
+from pulse.llm.schema import LLMRefusal, LLMRequest, LLMTruncated, RequestTooLarge
 from pulse.models import Review, Taxonomy, Theme
 from pulse.store import Store
 
@@ -86,8 +86,12 @@ def test_short_keys_map_back_to_review_ids(tmp_store: Store) -> None:
     llm = FakeLLM({"classify": echo_handler("charges")})
     result = classify_reviews(llm, tmp_store, reviews(3), taxonomy())
     assert sorted(result.classifications) == ["r0000", "r0001", "r0002"]
-    saved = tmp_store.get_classifications(["r0001"], 1, PROMPT_VERSION)["r0001"]
-    assert (saved.theme_id, saved.sentiment, saved.prompt_version) == ("charges", "negative", PROMPT_VERSION)
+    saved = tmp_store.get_classifications(["r0001"], 1, prompt_version())["r0001"]
+    assert (saved.theme_id, saved.sentiment, saved.prompt_version) == (
+        "charges",
+        "negative",
+        prompt_version(),
+    )
     assert "r0001" not in llm.calls[0].user
 
 
@@ -169,3 +173,26 @@ def test_classify_prompt_contains_data_rule_and_taxonomy(tmp_store: Store) -> No
     system = llm.calls[0].system
     assert DATA_RULE in system and all(slug in system for slug in ("support", "charges", "bugs", "unthemed"))
     assert "names no product area" in system and "Hinglish" in system and "mixed" in system
+
+
+def test_chunk_larger_than_tpm_is_split(tmp_store: Store) -> None:  # LLM-12, review I2
+    def handle(req: LLMRequest) -> BaseModel:
+        if len(keys_in(req)) > 20:
+            raise RequestTooLarge("a 9000-token request can never fit limits.tpm (8000)")
+        return echo_handler()(req)
+
+    llm = FakeLLM({"classify": handle})
+    result = classify_reviews(llm, tmp_store, reviews(50), taxonomy())
+    assert len(result.classifications) == 50 and sizes(llm) == [50, 25, 12, 13, 25, 12, 13]
+
+
+def test_prompt_version_comes_from_prompt_file(
+    tmp_store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:  # review I4
+    tmp_store.save_classifications([make_classification(f"r{index:04d}", "bugs") for index in range(5)])
+    bumped = Prompt(version="classify-v2", text=load_prompt("classify").text)
+    monkeypatch.setattr("pulse.llm.classify.load_prompt", lambda name: bumped)
+    llm = FakeLLM({"classify": echo_handler()})
+    result = classify_reviews(llm, tmp_store, reviews(5), taxonomy())
+    assert result.from_cache == 0 and result.sent == 5
+    assert {label.prompt_version for label in result.classifications.values()} == {"classify-v2"}
