@@ -48,8 +48,8 @@ def test_macro_f1_includes_unthemed_class() -> None:
     pred = {"a": "support", "b": "unthemed", "c": "unthemed", "d": "charges"}
     score, per_class = macro_f1(gold, pred, CLASSES)
     assert set(per_class) == {"support", "charges", "unthemed"}
-    precision, recall, f1, support = per_class["unthemed"]
-    assert (precision, recall, support) == (0.5, 1.0, 1) and f1 == pytest.approx(2 / 3)
+    precision, recall, f1_score, support = per_class["unthemed"]
+    assert (precision, recall, support) == (0.5, 1.0, 1) and f1_score == pytest.approx(2 / 3)
     assert score == pytest.approx((2 / 3 + 1.0 + 2 / 3) / 3)
     assert class_labels(taxonomy()) == CLASSES
 
@@ -194,7 +194,7 @@ def test_runner_separates_errors_and_unexpected_model_rows(tmp_path: Path) -> No
     )
     run.error("c", "unclassified", "no label after retries")
     assert [case["case_id"] for case in run.headline_cases()] == ["a"]
-    run.metric("E-CLS-1", 1.0, target=0.8, gate="blocking", ci=(0.9, 1.0))
+    run.metric("E-CLS-1", 1.0, target=0.8, gate="blocking", ci95=(0.9, 1.0))
     out = run.finish(UsageLedger(), Pricing())
     summary = json.loads((out / "summary.json").read_text())
     assert (summary["scored"], summary["errors"], summary["unexpected_model"]) == (2, 1, 1)

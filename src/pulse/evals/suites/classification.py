@@ -109,7 +109,7 @@ def _record_metrics(
     pred = {key: runs[0][key].theme_id for key in truth if key in runs[0]}
     score, per_class = macro_f1(truth, pred, classes)
     run.metric(
-        "E-CLS-1", score, target=0.80, gate="blocking", ci=paired_bootstrap_ci(truth, pred, classes=classes)
+        "E-CLS-1", score, target=0.80, gate="blocking", ci95=paired_bootstrap_ci(truth, pred, classes=classes)
     )
     run.metric(
         "E-CLS-2",

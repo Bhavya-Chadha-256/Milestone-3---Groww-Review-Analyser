@@ -49,7 +49,7 @@ class EvalRun:
         *,
         target: float | None = None,
         gate: str,
-        ci: tuple[float, float] | None = None,
+        ci95: tuple[float, float] | None = None,
         higher_is_better: bool = True,
     ) -> None:
         passed = None
@@ -57,7 +57,7 @@ class EvalRun:
             passed = value >= target if higher_is_better else value <= target
         self.metrics[metric_id] = {
             "value": value,
-            "ci95": list(ci) if ci else None,
+            "ci95": list(ci95) if ci95 else None,
             "target": target,
             "gate": gate,
             "pass": passed,
@@ -144,9 +144,11 @@ def _report(suite: str, summary: dict[str, Any]) -> str:
     rows = ["| Metric | Value | 95% CI | Target | Gate | Pass |", "|---|---|---|---|---|---|"]
     for metric_id, metric in summary["metrics"].items():
         value = "n/a" if metric["value"] is None else f"{metric['value']:.3f}"
-        ci = f"{metric['ci95'][0]:.3f}–{metric['ci95'][1]:.3f}" if metric["ci95"] else ""
+        interval = f"{metric['ci95'][0]:.3f}–{metric['ci95'][1]:.3f}" if metric["ci95"] else ""
         target = "" if metric["target"] is None else f"{metric['target']}"
-        rows.append(f"| {metric_id} | {value} | {ci} | {target} | {metric['gate']} | {metric['pass']} |")
+        rows.append(
+            f"| {metric_id} | {value} | {interval} | {target} | {metric['gate']} | {metric['pass']} |"
+        )
     counts = (
         f"Scored {summary['scored']} of {summary['attempts']} cases; {summary['errors']} errors; "
         f"{summary['unexpected_model']} served by an unexpected model (excluded from the headline). "

@@ -28,8 +28,8 @@ def macro_f1(
             continue
         precision = true_pos / (true_pos + false_pos) if true_pos + false_pos else 0.0
         recall = true_pos / (true_pos + false_neg) if true_pos + false_neg else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-        per_class[name] = (precision, recall, f1, true_pos + false_neg)
+        f1_score = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        per_class[name] = (precision, recall, f1_score, true_pos + false_neg)
     score = sum(values[2] for values in per_class.values()) / len(per_class) if per_class else 0.0
     return score, per_class
 
