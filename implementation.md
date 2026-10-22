@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 built (315 tests pass, ruff clean); final review done: **with fixes (1 Critical, 6 Important), fix pass pending**; live backfill day 1 done (800/2,177 classified), about 2 resumes to go | `phase-3-themes` (local, not pushed) | Groq free tier. Discovery produced taxonomy v1 with 5 themes. See the Handoff for the next steps. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.6 built; final review "with fixes" (1 Critical, 6 Important) and **fix pass done** (333 tests pass, ruff clean); live backfill day 1 done (800/2,177 classified), about 2 resumes to go, from 00:00 UTC 2026-10-23; then the gold set (manual) | `phase-3-themes` (on GitHub; the fix-pass commits are local until pushed) | Groq free tier. Discovery produced taxonomy v1 with 5 themes. See the Handoff for the next steps. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-22, mid-Phase 3)
@@ -32,7 +32,7 @@ Update this table whenever a task or phase changes state.
 - **Branches:**
   - `main` matches GitHub `origin/main` (commit `9da3352`): Phases 0–2 plus Task 1.4, published as one clean commit.
   - The local branch `archive/full-history` holds the pre-publication history. **Never push it.**
-- **`phase-3-themes`** (local, not pushed) holds Tasks 3.1–3.6 implemented test-first; 315 tests pass and ruff is clean. It merges into `main` only at the Phase 3 checkpoint.
+- **`phase-3-themes`** (on GitHub as `origin/phase-3-themes`; the fix-pass commits are local until pushed) holds Tasks 3.1–3.6 implemented test-first plus the final-review fix pass; 333 tests pass and ruff is clean. It merges into `main` only at the Phase 3 checkpoint.
 - **Data:**
   - **`data/raw/`** (git-ignored) holds 2 App Store exports (100 unique reviews, 10 Sep – 5 Oct 2026) and 1 Play fetch (13,057 reviews, 27 Jul – 20 Oct 2026).
   - **`data/pulse.db`** holds the 12,978 reviews of the W42 window. 2,177 are eligible for themes (2,136 Play + 41 App Store); 10,801 are stored but excluded (10,363 `too_short`, 438 `unsupported_language`).
@@ -40,9 +40,9 @@ Update this table whenever a task or phase changes state.
 - **Live checkpoint run, day 1:**
   - **Run:** `uv run pulse run --week 2026-W42 --until aggregate`, started 2026-10-22 at about 09:09 UTC. Its run ID is `2026-W42-20261022T090923`, and its artifacts are in `runs/2026-W42-20261022T090923/`.
   - **Discovery** finished with **taxonomy v1, 5 themes:** `support_account` Support & Account, `app_performance` App Performance, `charges_fees` Charges & Fees, `trading_experience` Trading Experience, `mutual_funds_sip` Mutual Funds & SIP. They match finding D3.
-  - **Day 1 result (finished 2026-10-22):** status `FAILED` with `daily_token_budget: classified 800 of 2177; run again after 00:00 UTC with --from classify`. **This is the planned outcome.** 800 of 2,177 reviews are classified and saved, 0 are unclassified, and the day used 178,331 tokens in 33 calls. **1,377 reviews remain**, about 2 more daily resumes. It is expected to stop at the daily budget with status `FAILED` and the warning `daily_token_budget: … --from classify`. **That is the planned outcome, not an error.**
+  - **Day 1 result (finished 2026-10-22):** status `FAILED` with `daily_token_budget: classified 800 of 2177; run again after 00:00 UTC with --from classify` (the hint format before the fix pass; it now prints the full `pulse run --week … --from classify --until …` command, and a resume drops this stale warning). **This is the planned outcome.** 800 of 2,177 reviews are classified and saved, 0 are unclassified, and the day used 178,331 tokens in 33 calls. **1,377 reviews remain**, about 2 more daily resumes. It is expected to stop at the daily budget with status `FAILED` and the warning `daily_token_budget: … --from classify`. **That is the planned outcome, not an error.**
   - **Observed token use** is about **180 tokens per classified review** including reasoning, against the plan's estimate of 80, plus about 39K for discovery. The backfill therefore takes about **3 days**, not 2. Recalibrate `REVIEW_OUTPUT_TOKENS` / `estimate_classify_tokens` from the finished run (a deferred minor).
-- **Final review: done, "with fixes" (1 Critical, 6 Important, 10 Minor); the fix pass has not started.** The full list is in the ledger (`Final: TODO …` lines, also in `docs/decision-ledger.md`):
+- **Final review: done, "with fixes" (1 Critical, 6 Important, 10 Minor). The fix pass is done (2026-10-22):** every Critical/Important finding and the cheap extras are fixed, each with a test that failed first; see **Phase 3 final-review fix pass** above the Phase 3 checkpoint, and the `Final: fixed …` ledger lines. The findings were:
   - **C1 (Critical):** the "rediscover once" guard is held only in memory, so every `--from classify` resume can rediscover again and the backfill never finishes. **Fix C1 before resuming the live run.**
   - **I1:** a 429 can sleep for hours, then fail without a resume hint.
   - **I2:** a 50-review chunk larger than `tpm` stops classification permanently.
@@ -53,7 +53,7 @@ Update this table whenever a task or phase changes state.
   - **Also cheap to fix:** the resume hint lacks `--week` and `--until aggregate`; resumed reports keep stale warnings; the 2-character names `f1` and `ci` break the naming rule.
 
 **Next steps (in order)**
-0. **Fix pass first (on `phase-3-themes`):** fix C1 and I1–I6, plus the cheap extras, each with a test that fails first, and run the full suite. C1 must land before step 2.
+0. ~~**Fix pass first.**~~ Done 2026-10-22 (C1, I1–I6 and the extras; 333 tests pass).
 1. **Check day 1.** Read `runs/2026-W42-20261022T090923/report.md` (the Classification section and Warnings), or run `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`. If the process died, simply resume (step 2): the cache keeps every finished chunk.
 2. **Each following day, after 00:00 UTC:** run `uv run pulse run --week 2026-W42 --from classify --until aggregate` until the status is `AGGREGATED`, about 2 more days. Don't run evals on those days, because they share the daily budget.
 3. **Check the result** in `report.md` → **Top themes**: 3–5 themes with names of at most 4 words (E-TAX-4), `actionable_unthemed_share` ≤ 0.20 (E-TAX-1), and no `broad_theme:` warning. If one appears, revise `discover.md` and run `pulse rediscover`.
@@ -1486,14 +1486,14 @@ Expected: all passed.
 **Interfaces:**
 - Consumes: 3.1 (`StructuredLLM`, `DailyBudgetExhausted`, `reviews_json`, `estimate_tokens`); `Store` (2.1); `Taxonomy`, `Classification`, `UNTHEMED`; `LLMSettings` (3.1).
 - Produces:
-  - `PROMPT_VERSION = "classify-v1"`
+  - `prompt_version() -> str`, read from `classify.md`'s header (as built; the plan had a `PROMPT_VERSION = "classify-v1"` constant)
   - `make_classify_schema(theme_ids) -> type[BaseModel]`. The schema is `items: list[Item]`, where `Item` has `k: int` (the short key), `theme_id: Literal[*theme_ids, "unthemed"]` and `sentiment: Literal["negative","mixed","positive"]`.
   - `ClassifyResult(classifications: dict[str, Classification], unclassified: list[str], from_cache: int, sent: int, stopped_for_budget: bool, pending_after: int)`
   - `estimate_classify_tokens(pending: int, chunk_size: int, system_tokens: int, max_tokens: int) -> int`
   - `classify_reviews(llm, store, reviews, taxonomy, *, chunk_size=50) -> ClassifyResult`
 
 **Algorithm:**
-1. **Find pending reviews:** everything without a cached classification for `(taxonomy.version, PROMPT_VERSION)`.
+1. **Find pending reviews:** everything without a cached classification for `(taxonomy.version, prompt_version())`.
 2. **Estimate (LLM-13):** compute `estimate_classify_tokens` and compare it with `llm.remaining_tokens_today()`. Both numbers go to the report. A shortfall doesn't stop the stage; it classifies as much as the budget allows (step 4).
 3. **Chunk** `pending` into groups of `chunk_size`, in input order. One chunk of 50 is about 5.5K tokens including `max_tokens`, under the 8K/min limit.
 4. **Send each chunk with `structured`, and save its results immediately**, so an interruption loses at most one chunk (OPS-6).
@@ -1657,7 +1657,7 @@ Expected: all passed.
 | Stage | Behavior |
 |---|---|
 | **discover** | Read the window's **eligible** reviews (`reviews_between(..., eligible_only=True)`). If there are fewer than `themes.min_reviews`, return `INSUFFICIENT_DATA` with a report line giving the count (ING-6). Use `store.latest_taxonomy()` unless it is `None` or `opts.rediscover` is set. Otherwise run `discover_taxonomy(stratified_sample(...))` with `next_taxonomy_version()` and save it. Then save `taxonomy.json`. |
-| **classify** | `classify_reviews` over the eligible reviews only. If it returns `stopped_for_budget`, return `FAILED` with the report line `daily_token_budget: classified X of Y; run again after 00:00 UTC with --from classify` (LLM-13). Records `unclassified`, `served_models` and the day's token use in the run summary. Status `CLASSIFIED`. |
+| **classify** | `classify_reviews` over the eligible reviews only. If it returns `stopped_for_budget`, return `FAILED` with the report line `daily_token_budget: classified X of Y; run again after 00:00 UTC: pulse run --week <week> --from classify --until <stage>` (LLM-13). Records `unclassified`, `served_models` and the day's token use in the run summary. Status `CLASSIFIED`. |
 | **aggregate** | `aggregate(...)` over **all** reviews in the window (D1), then save `aggregates.json`. Add `Aggregates.warnings` to the report warnings. |
 
 **Auto-rediscovery in the aggregate stage:**
@@ -1707,7 +1707,7 @@ Expected: all passed.
 > **As built (2026-10-22):**
 > - **CLI and key:** `build_dependencies(settings, *, need_llm=False)` builds the `GroqLLM` only when the run reaches `discover` or later, so `pulse ingest` never needs a key. A missing key exits 2 with a message naming `GROQ_API_KEY` (OPS-10). `pulse rediscover [--week]` runs `--until discover --rediscover`.
 > - **Resume:** the report state is saved to `runs/<id>/report.json` next to `report.md`. With `--from`, the pipeline loads it first (OPS-11). A resumed stage reads `taxonomy.json` and pulls cached classifications from the store.
-> - **Daily budget:** hitting it in discovery or rediscovery fails the run with `daily_token_budget: …; run again after 00:00 UTC with --from discover`, just as classification does with `--from classify`.
+> - **Daily budget:** hitting it in discovery or rediscovery fails the run with `daily_token_budget: …; run again after 00:00 UTC: pulse run --week <week> --from discover --until <stage>`, just as classification does with `--from classify`.
 > - **Report:** a **Classification** section (cache hits, sent, the token estimate, tokens left today, unclassified) was added.
 > - **Run summary:** it records `taxonomy_version`, `classified`, `unclassified`, `served_models`, `tokens_total` and `daily_tokens_left`. The rediscovery test checks the store and this summary instead of `manifest.json`, which ingest writes before discovery runs.
 > - **Sample seed:** discovery uses seed 7 (evaluation §5).
@@ -1733,8 +1733,8 @@ Expected: all passed.
 - Produces in `runner.py`, `EvalRun(suite: str, out_root=Path("evals/results"))`:
   - `.case(case_id, record: dict, *, served_model: str, primary_model: str)`. Rows served by a model other than the requested one are flagged `unexpected_model` and excluded from the headline.
   - `.error(case_id, failure_class: str, detail: str)`, which writes to `errors.jsonl`
-  - `.metric(id, value, *, target=None, gate, ci=None)`
-  - `.finish(usage: UsageLedger, pricing, judge_usage: UsageLedger | None = None) -> Path`, which writes `summary.json`, `cases.jsonl`, `errors.jsonl` and `report.md` to `evals/results/<date>-<suite>/`
+  - `.metric(id, value, *, target=None, gate, ci95=None)`
+  - `.finish(usage: UsageLedger, pricing, judge_usage: UsageLedger | None = None) -> Path`, which writes `summary.json`, `cases.jsonl`, `errors.jsonl` and `report.md` to `evals/results/<YYYY-MM-DDTHHMMSS>-<suite>/` (UTC start; never overwritten)
   - `compare(a: Path, b: Path) -> list[CompareRow]`. Each row is marked `improved`, `regressed` or `within noise`, using the stored CIs.
 - Produces in `gold.py`:
   - `export_gold(store, window, taxonomy, n=200, min_per_class=15, seed=7, path) -> int`
@@ -1790,7 +1790,7 @@ Expected: all passed.
 > - **Signatures that differ from the plan:**
 >   - The class list is `class_labels(taxonomy)`, not `CLASSES`.
 >   - `paired_bootstrap_ci(gold, pred_a, pred_b=None, *, classes, n=1000, seed=0)`: `classes` is keyword-only.
->   - `load_gold(path, *, current_version)`; `GoldSet` also carries `sentiments`.
+>   - `load_gold(path, *, taxonomy)` (the fix pass changed it from `current_version`); `GoldSet` also carries `sentiments`.
 >   - `export_gold(..., *, n, min_per_class, seed, path)`.
 >   - `run_classification_suite(..., *, gold_path=None, out_root=...)`.
 >   - `EvalRun.metric(..., higher_is_better=True)` (E-CLS-5 is "lower is better"), and `EvalRun.headline_cases()`.
@@ -1801,6 +1801,23 @@ Expected: all passed.
 > - **Privacy:** `evals/gold/*.csv` is git-ignored, because the gold set holds real (scrubbed) review text and the repo is public. Only `*.meta.json` is committed. Back the labelled CSV up privately.
 > - **CLI:** `pulse eval --export-gold N [--gold PATH]`, `pulse eval --suite classification [--dataset gold|drift] [--gold PATH]`, `pulse eval --compare A B`.
 > - **Extra tests:** `test_missing_prediction_counts_as_wrong`, `test_get_reviews_returns_requested_ids`, `test_eval_export_gold_writes_csv`, `test_eval_compare_prints_verdicts`.
+
+### Phase 3 final-review fix pass (2026-10-22)
+
+The whole-branch review returned "with fixes" (1 Critical, 6 Important). Each fix has a test that failed first; the suite went from 315 to 333 tests, all passing, ruff clean.
+
+| Finding | Fix | Tests (task) |
+|---|---|---|
+| **C1** rediscover-once guard held only in memory | The guard reads `taxonomy.created_from_run == run_id`, and rediscovery sets a persisted `rediscovered` count, so a `--from classify` resume never rediscovers again | 3.5 `test_resume_does_not_rediscover_taxonomy_created_in_run`, `test_resume_after_rediscovery_does_not_rediscover_again` |
+| **I1** 429 could sleep for hours, then fail without a hint | A 429 with retry-after over 60 s or a per-day message raises `DailyBudgetExhausted`; no sleep after the last attempt; `Groq(max_retries=0)`, with 5xx and connection errors retried by `GroqLLM`; a `json_validate_failed` rejection records its token estimate | 3.1 `test_daily_rate_limit_stops_for_the_day_without_waiting`, `test_rate_limit_gives_up_without_a_final_sleep`, `test_server_error_is_retried`, `test_default_client_leaves_retries_to_the_rate_limiter`, `test_json_validate_failure_counts_toward_daily_usage` |
+| **I2** a chunk over `tpm` failed on every resume | The limiter raises `RequestTooLarge` (an `LLMError`), which the classifier splits like a truncation | 3.1 `test_request_larger_than_tpm_is_rejected`, 3.3 `test_chunk_larger_than_tpm_is_split` |
+| **I3** eval scored infrastructure failures as wrong | `EvalAborted` when the budget runs out (nothing written, exit 2); unlabelled gold reviews go to `errors.jsonl` with a failure class from `ClassifyResult.failures` and are not scored | 3.6 `test_suite_aborts_when_daily_budget_runs_out`, `test_infrastructure_failures_are_not_scored`, `test_eval_suite_aborted_exits_with_message` |
+| **I4** hard-coded `PROMPT_VERSION` | `prompt_version()` reads `classify.md`; it still says `classify-v1`, so the live cache stays valid | 3.3 `test_prompt_version_comes_from_prompt_file` |
+| **I5** same-day eval rerun overwrote the baseline | Results go to `evals/results/<YYYY-MM-DDTHHMMSS>-<suite>/`; an existing directory raises `FileExistsError`. `EvalRun(today=)` became `EvalRun(started=)` | 3.6 `test_same_day_reruns_keep_separate_results` |
+| **I6** `load_gold` accepted invalid labels and missing IDs | `load_gold(path, *, taxonomy)` refuses `gold_theme`/`gold_sentiment` values outside the taxonomy; the suite refuses gold IDs missing from the store before any LLM call; `pulse eval` exits 2 with the reason | 3.6 `test_load_gold_rejects_labels_outside_taxonomy`, `test_suite_refuses_gold_ids_missing_from_store`, `test_eval_refuses_unusable_gold_set_with_message` |
+| Resume hint lacked `--week` and `--until` | `run again after 00:00 UTC: pulse run --week <week> --from <stage> --until <stage>` | 3.5 `test_budget_exhaustion_fails_run_with_resume_hint` |
+| Resumed reports kept stale warnings | Warnings are tagged by stage (`report.json` → `warning_stages`); a resume drops the rerun stages' warnings. Untagged ones from older reports are dropped when they start with `daily_token_budget` or `stage_failed:` | 3.5 `test_resume_drops_warnings_from_rerun_stages`, `test_resume_drops_budget_warning_from_older_report` |
+| Two-character names `f1`, `ci` | Renamed `f1_score`, `ci95` (`EvalRun.metric(ci=)` became `ci95=`) | (rename; suite unchanged) |
 
 ### Phase 3 checkpoint
 

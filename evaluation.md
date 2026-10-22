@@ -324,7 +324,9 @@ Building the gold set: `pulse eval --export-gold 200`, then follow §3.1.
 
 ## 11. Results format
 
-Each suite run writes the following to `evals/results/<YYYY-MM-DD>-<suite>/`:
+Each suite run writes the following to `evals/results/<YYYY-MM-DDTHHMMSS>-<suite>/` (its UTC start time). A rerun on the same day gets its own directory, and an existing directory is never overwritten, so `--compare` always reads two different runs.
+
+A suite that can't finish for an infrastructure reason (the daily token budget runs out mid-run) aborts with exit 2 and writes nothing. Gold reviews the model couldn't label go to `errors.jsonl` with their failure class (`refused`, `truncated`, `schema`, `missing`) and are left out of the scored set (§5 rule 2). An unusable gold set (a `gold_theme` or `gold_sentiment` outside the taxonomy, or a review ID no longer in the store) is refused before any LLM call.
 
 - **`summary.json`:**
   ```json
