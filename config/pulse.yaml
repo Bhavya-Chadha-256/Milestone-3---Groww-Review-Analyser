@@ -19,7 +19,8 @@ themes:
   min_reviews: 100
   discovery_sample: 400
   discovery_batch: 100                   # max reviews per discovery pass (passes also fit the per-minute token limit)
-  rediscover_unthemed_threshold: 0.20
+  rediscover_unthemed_threshold: 0.20    # applies to the actionable unthemed share (architecture §3.3)
+  trend_z: 2.0                           # trend arrow only at ≥ 2 standard errors (architecture §3.5)
   seed_hints: [customer support, app bugs and performance, charges and brokerage, trading and F&O orders,
                charts and market data, KYC and onboarding, payments and withdrawals, mutual funds and SIP]
 llm:
@@ -58,6 +59,7 @@ monitoring:
   cost_spike_factor: 2.0
   retries_warn: 1
   daily_tokens_warn: 0.80                # M-COST-2
+  broad_theme_warn: 0.40                 # M-DATA-6: a theme above this share is a likely catch-all
 evals:
   judge_model: qwen/qwen3.8-27b          # a different family from the pipeline model (architecture §9)
   judge_majority_flip_rate: 0.05

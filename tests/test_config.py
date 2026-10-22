@@ -80,6 +80,8 @@ def test_unknown_llm_stage_is_rejected(tmp_path: Path) -> None:
         ("llm", "classify_chunk_size", 0),
         ("llm", "daily_token_reserve", -1),
         ("monitoring", "daily_tokens_warn", 5),
+        ("themes", "trend_z", 0),
+        ("monitoring", "broad_theme_warn", 5),
         ("pulse", "max_words", -250),
         ("pulse", "retries", -1),
         ("monitoring", "skipped_share_warn", 5),

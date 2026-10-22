@@ -74,7 +74,8 @@ class ThemesSettings(StrictModel):
     min_reviews: PositiveInt = 100
     discovery_sample: PositiveInt = 400
     discovery_batch: PositiveInt = 100  # max reviews per discovery pass; token budget may make passes smaller
-    rediscover_unthemed_threshold: Share = 0.20
+    rediscover_unthemed_threshold: Share = 0.20  # applies to the actionable unthemed share
+    trend_z: PositiveFloat = 2.0  # trend arrows need a change of at least this many standard errors
     seed_hints: list[str] = []
 
     @model_validator(mode="after")
@@ -165,6 +166,7 @@ class MonitoringSettings(StrictModel):
     cost_spike_factor: PositiveFloat = 2.0
     retries_warn: NonNegativeInt = 1
     daily_tokens_warn: Share = 0.80  # M-COST-2: share of a model's daily token limit
+    broad_theme_warn: Share = 0.40  # M-DATA-6: a theme above this share is a likely catch-all
 
 
 class EvalSettings(StrictModel):

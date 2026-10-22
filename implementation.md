@@ -23,7 +23,7 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.3 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 3. Themes | 🚧 In progress (2026-10-22): Tasks 3.1–3.4 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
 | 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
@@ -1567,7 +1567,7 @@ Expected: all passed.
 - **Arrows:** `trend_arrow` returns `""` for `None`, `→` when not significant, and otherwise `↑` for positive pts and `↓` for negative pts.
 - **Mapping:** `theme_mapping` maps each old theme to the new theme most of its reviews moved to.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_counts_shares_and_ratings(): ...
@@ -1589,21 +1589,29 @@ def test_low_sample_flag(): ...                                          # AGG-7
 def test_theme_mapping_uses_majority(): ...                              # AGG-11
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_aggregate.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `aggregate.py`**
+- [x] **Step 3: Implement `aggregate.py`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_aggregate.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: aggregate theme stats with IST trend, duplicate share and low-sample flags"`
+
+> **As built (2026-10-22):**
+> - **Significance helper:** `trend_significant(share, latest_share, latest_total, trend_z) -> bool` is public, so the 2-standard-error rule is tested directly (AGG-13).
+> - **Source counts:** `Aggregates.sources` counts **all** window reviews, for the pulse header. `ThemeStats.sources` counts the theme's reviews.
+> - **Empty themes:** `mean_rating` is `None` for a theme with no reviews.
+> - **Mapping:** `theme_mapping` skips old `unthemed` reviews and breaks ties by the new theme ID.
+> - **Config:** new keys `themes.trend_z` (2.0) and `monitoring.broad_theme_warn` (0.40).
+> - **Extra tests:** `test_actionable_unthemed_share_is_zero_without_actionable_reviews`, `test_trend_compares_latest_week_with_window`, plus range checks for the two new keys.
 
 ---
 
