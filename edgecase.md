@@ -121,12 +121,12 @@ The first draft of this catalog found 12 gaps. Each now has an owning task and a
 |---|---|---|---|---|---|
 | AGG-1 | Review at 00:30 IST on Monday (Sunday 19:00 UTC) | Belongs to the new ISO week | H | ✅ | 1.1 `test_iso_week_uses_ist_boundary` |
 | AGG-2 | Run on a Sunday | Uses the previous complete week | M | ✅ | 1.1 `test_resolve_window_on_sunday_uses_previous_complete_week` |
-| AGG-3 | Fewer than 3 themes have reviews | `INSUFFICIENT_DATA`; nothing delivered | H | ✅ | 3.4 `test_rank_top_raises_when_fewer_than_three_populated_themes`, 3.5 `test_insufficient_data_stops_run`, 4.5 `thin` dataset |
+| AGG-3 | Fewer than 3 themes have reviews | `INSUFFICIENT_DATA`; nothing delivered | H | ✅ | 3.4 `test_rank_top_raises_when_fewer_than_three_populated_themes`, 3.5 `test_insufficient_data_stops_run`, 4.5 `thin` dataset (`test_thin_dataset_has_two_populated_themes`) |
 | AGG-4 | Latest week has no classified reviews | `trend_pts = None`; trend clause omitted | M | ✅ | 3.4 `test_trend_is_none_when_latest_week_empty` |
 | AGG-5 | Two themes tie on count | Tie broken by 1–2★ share, then by ID | L | ✅ | 3.4 `test_rank_top_breaks_ties_by_low_rating_share` |
 | AGG-6 | ISO week 53 and year boundaries: a run on Mon 4 Jan 2027 gives `2026-W53`, window 12 Oct 2026 – 3 Jan 2027; 29 Dec 2025 is in `2026-W01` | Week label and window are correct. The metadata line shows both years when they differ. | M | ✅ | 1.1 `test_iso_week_53_window`, `test_iso_year_differs_from_calendar_year`; 4.3 `test_meta_line_shows_both_years_across_year_boundary` |
 | AGG-7 | A top theme with fewer than 10 reviews | Still ranked, but flagged `low_sample` and warned in the report | M | ✅ 📏 | 3.4 `test_low_sample_flag`, M-DATA-4 (6.3) |
-| AGG-8 | Review bombing: hundreds of identical 1★ reviews | Duplicates still count but are never quoted. `duplicate_share` reported and warned above 0.10. | H | ✅ 📏 | 3.4 `test_duplicate_share_reported`, 4.5 `burst` dataset, M-DATA-3 (6.3) |
+| AGG-8 | Review bombing: hundreds of identical 1★ reviews | Duplicates still count but are never quoted. `duplicate_share` reported and warned above 0.10. | H | ✅ 📏 | 3.4 `test_duplicate_share_reported`, 4.5 `burst` dataset (`test_burst_dataset_adds_identical_latest_week_reviews`), M-DATA-3 (6.3) |
 | AGG-9 | Shares that round to `0%`, or that sum past 100% | Display only; shares are per theme | L | 🟦 | — |
 | AGG-10 | Reviews still unclassified after retries | Excluded from `total`; count reported | M | ✅ 📏 | 3.4 `test_unclassified_reviews_are_excluded_from_total`, M-LLM-2 |
 | AGG-11 | Old → new theme mapping after a taxonomy change | Majority mapping in the report; trends always within one taxonomy version | M | ✅ | 3.4 `test_theme_mapping_uses_majority` |

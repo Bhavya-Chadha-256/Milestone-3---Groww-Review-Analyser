@@ -2183,7 +2183,7 @@ Expected: all passed.
     - **Oracle and null baselines:** the golden pulse validates; each Task 4.3 mutation fails; real substrings pass `verify_quote` and altered ones fail.
   - `run_pulses_suite(settings, llm) -> Path`. Paid. Runs the **live** pipeline with `--dry-run` on the `normal` and `burst` datasets (R=1 each), and checks that `thin` ends `INSUFFICIENT_DATA`. Records E-PUL-1, E-PUL-2 (first-attempt pass, from `validation_retries`), E-QUO-1 and E-ACT-5. Judge metrics are added to this suite in Task 6.1.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_generator_is_deterministic(tmp_path): ...       # two runs → byte-identical CSVs
@@ -2193,21 +2193,30 @@ def test_deterministic_oracle_and_null_baselines(tmp_path): ...
 def test_pulses_suite_records_first_attempt_pass(tmp_path): ...   # FakeLLM: one retry on burst → E-PUL-2 == 0.5
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_evals_pulse.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the generator (run it and commit its CSVs), both suites and the CLI options**
+- [x] **Step 3: Implement the generator (run it and commit its CSVs), both suites and the CLI options**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_evals_pulse.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add fixture datasets, deterministic suite and live pulses suite"`
+
+> **As built (2026-10-22):**
+> - **Datasets:** `normal` has 320 rows (300 eligible + 20 Hindi), `thin` 120, `burst` 380 (normal + 60 identical 1★ withdrawal reviews in 12–18 Oct). Each template names exactly one theme's marker words (`MARKERS`, `theme_of` in `generate.py`), so tests label rows with a keyword classifier. Two templates were reworded because "up**loading**" and "**lag** rahe" hit another theme's markers.
+> - **Oracle module:** the valid pulse and the 10 gate mutations moved from the tests into `src/pulse/evals/oracle.py`; the unit tests and the deterministic suite share them.
+> - **Deterministic suite metrics:** `ORACLE-validators`, `NULL-validators`, `ORACLE-quotes`, `NULL-quotes` (run first; any miss raises `EvalAborted` and nothing is written), then E-QUO-1, E-PII-1, E-PII-3 (+ `E-PII-3-false-positives`), E-TAX-4. Records hold IDs, file names and counts, never text.
+> - **E-PII-1 and review IDs:** the first real run reported 30 hits, all in `taxonomy.json`'s `sample_review_ids`: 16-character hex hashes whose digit runs look like Aadhaar, account or phone numbers. The scan now skips a 16-character hex token if it has a hex letter or is a stored review ID (`Store.review_ids()`); any other all-digit value is still checked. Real data then scored 0.
+> - **Pulses suite:** each dataset runs in its own temporary store and runs directory with `--week 2026-W42`, until `validate`. Extra metric `burst-duplicate-share` (tracking, ≥ 0.10). It costs about a full day's Groq budget (two discoveries plus ~800 classifications), so run it on a day with no backfill.
+> - **CLI:** `pulse eval --suite deterministic|classification|pulses`; `deterministic` needs no key.
+> - **Extra tests:** `test_burst_dataset_adds_identical_latest_week_reviews`, `test_deterministic_suite_aborts_when_a_baseline_misbehaves`, `test_artifact_scan_ignores_review_ids`, `test_eval_runs_deterministic_and_pulses_suites`.
 
 ### Phase 4 checkpoint
 

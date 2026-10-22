@@ -129,7 +129,8 @@ def _artifact_scan(run: EvalRun, roots: list[Path], known_ids: set[str]) -> None
 
 def _pii_kinds(path: Path, known_ids: set[str]) -> list[str]:
     text = HEX_TOKEN.sub(
-        lambda token: _mask_review_id(token.group(), known_ids), path.read_text(errors="ignore")
+        lambda token: _mask_review_id(token.group(), known_ids),
+        path.read_text(encoding="utf-8", errors="ignore"),
     )
     kinds = [match.kind for match in find_pii(text)]
     if path.name == "quotes.json":
