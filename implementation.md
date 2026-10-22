@@ -1364,7 +1364,7 @@ Expected: all passed.
 > - **Errors:** a missing key raises `LLMError` naming `GROQ_API_KEY` (OPS-10).
 > - **Store:** `add_llm_usage(day, model, tokens, requests=1)` and `llm_usage(day, model) -> (tokens, requests)`.
 > - **Test double:** `FakeLLM` takes `tokens_per_call` (default 1000).
-> - **Extra tests:** `test_rate_limiter_paces_requests_per_minute`, `test_daily_request_limit_is_enforced`, `test_request_larger_than_tpm_is_rejected`, `test_rate_limited_call_waits_then_retries`, `test_daily_budget_stops_before_sending`, `test_usage_is_recorded_per_day_and_model`, `test_missing_api_key_raises_clear_error`, and config tests for the limit checks and effort levels.
+> - **Extra tests:** `test_rate_limiter_paces_requests_per_minute`, `test_daily_request_limit_is_enforced`, `test_request_larger_than_tpm_is_rejected`, `test_rate_limited_call_waits_then_retries`, `test_daily_budget_stops_before_sending`, `test_usage_is_recorded_per_day_and_model`, `test_missing_api_key_raises_clear_error`, and the config tests `test_stage_max_tokens_must_fit_the_per_minute_limit`, `test_daily_reserve_must_be_below_the_daily_limit` and `test_effort_rejects_levels_groq_does_not_offer`.
 
 ---
 
