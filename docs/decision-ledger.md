@@ -161,4 +161,9 @@ Final(P4): fixed (re-graded) quote whitespace — test_quote_whitespace_is_colla
 Final(P4): fixed #2 LLM/budget errors in pulse stages — test_daily_budget_in_compose_fails_with_resume_hint, test_compose_error_is_retried_as_a_failed_attempt, test_compose_that_never_answers_fails_validation, test_request_too_large_counts_as_a_failed_pick RED→GREEN, suite 410/410
 Final(P4): fixed #5 (ruling above) — test_pulses_suite_records_first_attempt_pass asserts thin-insufficient-data tracking, RED (KeyError)→GREEN, suite 410/410
 Final(P4): fixed #6 Status table + Handoff rewritten (Phases 3–5 in flight); edgecase/evaluation updated; cross-check 138 cited tests all present.
+Task 5.3: Ruling: the Doc body is render_text (plain), not Markdown — a Doc shows Markdown syntax literally and escaped quotes would never pass read-back — cost if wrong: switch the body to render_markdown if the chosen server converts Markdown.
+Task 5.3: Ruling: publish refuses unless the saved validation.json passed — `--from publish` must never deliver a pulse that failed its gates — cost if wrong: none.
+Task 5.3: Ruling: run_with_gateway/gateway_problem unwrap the mcp client's task-group ExceptionGroup to the first real error — otherwise ToolCallFailed/MissingTool lose their messages — cost if wrong: a multi-error group reports only its first error.
+Phase 5 paused (2026-10-22) at the user's request ("stop after stage 5 is implemented"): Tasks 5.1–5.3 built; Phase 5 review not yet run; checkpoint needs the user's Google setup.
+Task 5.3: complete (commit 7dd41ee, tests: uv run pytest tests/test_pipeline_deliver.py tests/test_doctor.py → 11 passed; suite 437 passed)
 ```
