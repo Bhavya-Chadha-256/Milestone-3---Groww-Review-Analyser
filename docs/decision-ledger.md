@@ -122,4 +122,43 @@ Final: fixed I5 (same-day eval rerun overwrites) — test_same_day_reruns_keep_s
 Final: fixed I6 (load_gold accepts invalid labels/IDs) — test_load_gold_rejects_labels_outside_taxonomy, test_suite_refuses_gold_ids_missing_from_store, test_eval_refuses_unusable_gold_set_with_message RED→GREEN, suite 333/333. load_gold(path, current_version=) became load_gold(path, taxonomy=).
 Final: fixed should-fix style (f1, ci) — rename only, suite 333/333 before and after; EvalRun.metric(ci=) became ci95=.
 Phase 3 fix pass complete (2026-10-22): C1, I1–I6 and the 3 should-fix items fixed, suite 333/333, ruff clean; docs updated (implementation Status/Handoff + fix-pass table, edgecase LLM-2/3/8/10/12/13, OPS-6/11, evaluation §11). Next: resume the backfill after 00:00 UTC 2026-10-23.
+Ruling: classify pending reviews newest first (user chose to build on partial labels while the backfill continues; day 1's 800 labels were the oldest, 27 Jul–26 Aug, and the report week had 0) — test_newest_reviews_are_classified_first RED→GREEN, suite 334/334 — cost if wrong: none for a full backfill; order only matters when it stops early.
+Phase 4 start (2026-10-22): user decisions — (a) build on with the labels available while the W42 backfill continues in the background (daily cron 05:37 + 17:47 IST, session-only); (b) no human annotators for now, so the gold-set check (Phase 3 checkpoint) stays open; (c) Phase 5 delivery = self-hosted Google Workspace MCP server (architecture Option A); (d) recipient bhavyachadha256@gmail.com.
+Ruling: Phase 4 branches from phase-3-themes as phase-4-pulse (Phase 3 not merged: its checkpoint waits on the gold set) — the user chose to build ahead of the gold set — cost if wrong: phase-3 and phase-4 merge into main together.
+Task 4.1: Ruling: QuotePick carries the short key k instead of review_id — consistent with classify's reviews_json keys; models copy small ints more reliably than 16-hex IDs — cost if wrong: none (internal wire schema).
+Task 4.1: complete (commit e88349b, tests: uv run pytest tests/test_quotes.py → 15 passed; suite 349 passed)
+Task 4.2: complete (commit 37253b4, tests: uv run pytest tests/test_compose.py → 3 passed; suite 352 passed)
+Task 4.3: complete (commit 83fe379, tests: uv run pytest tests/test_render.py tests/test_validate.py → 30 passed; suite 382 passed). Golden render read in full before committing (156 words).
+Task 4.4: Ruling: plan test test_v3_failure_reruns_quotes renamed test_quote_routed_failure_reruns_quotes and driven by V6 — V3 cannot occur through the pipeline because select_quotes verifies every quote; V6 takes the same "quotes" route — cost if wrong: none.
+Task 4.4: Ruling: report.md's Pulse section shows the pulse only when validation passed — CLAUDE.md allows only validated pulse content in report.md; a V6 failure could otherwise copy personal data there — cost if wrong: one more file to open when debugging.
+Task 4.4: complete (commit 57b6efe, tests: uv run pytest tests/test_pipeline_pulse.py → 6 passed; suite 388 passed)
+Task 4.5: Ruling: generate.py was written before its tests (out of TDD order); compensated by a mutation check (unseeded rng → test_generator_is_deterministic fails, restored → passes) — cost if wrong: none observed.
+Task 4.5: Ruling: oracle fixtures + gate mutations moved into src/pulse/evals/oracle.py so the deterministic suite can run them (§5 rule 7) — cost if wrong: test-only code ships in the package (small, deterministic, no data).
+Task 4.5: Ruling: E-PII-1 skips 16-char hex tokens that contain a hex letter or are stored review IDs — the first real run flagged 30 review-ID hashes (all false positives); an unknown all-digit 16-char value is still flagged — cost if wrong: a real 16-char hex-with-letters secret would be missed (not a PII pattern we scrub).
+Task 4.5: complete (commit 7b325de, tests: uv run pytest tests/test_evals_pulse.py → 8 passed; suite 397 passed; pulse eval --suite deterministic on real data → all pass, E-QUO-1 n/a)
+Phase 5 start (2026-10-22): branch phase-5-deliver from phase-4-pulse (Phase 4 review running in parallel; its fixes land on phase-4-pulse, then phase-5 rebases).
+Task 5.1: Ruling: mcp 2.3 is installed (plan assumed 1.x): MCPServer replaces FastMCP, mcp.Client replaces ClientSession wiring and the in-memory helper — gateway wraps an entered Client — cost if wrong: none (tests pin the behavior).
+Task 5.1: Ruling: ServerSpec gains `env` (names of variables passed to the stdio server) — stdio servers inherit only safe vars, so workspace-mcp would not see GOOGLE_OAUTH_CLIENT_ID/SECRET — cost if wrong: one config key.
+Task 5.1: Ruling: ToolResult.id → resource_id and the `to` field → `recipient` (two-character naming rule) — cost if wrong: renames.
+Task 5.1: Ruling: chosen server workspace-mcp (taylorwilsdon/google_workspace_mcp), stdio, --single-user --tools docs gmail — most widely used self-hosted Workspace MCP server; user chose "self-hosted" — cost if wrong: remap config/mcp.yaml to another server.
+Task 5.1: complete (commit 7d2aa88, tests: uv run pytest tests/test_mcp_gateway.py → 9 passed; suite 406 passed)
+Task 5.2: complete (commit 03359e1, tests: uv run pytest tests/test_delivery.py → 6 passed; suite 412 passed)
+Phase 4 final review: fresh reviewer (opus) — With fixes; 0 Critical, 6 Important, 8 Minor.
+Final(P4): Ruling: re-graded Minor "quote keeps raw whitespace" to Important — a quote spanning a paragraph break ends the Markdown blockquote in the published Doc — fixed in the pass.
+Final(P4): Ruling: Important #5 (live `thin` cannot reliably end INSUFFICIENT_DATA: discovery must emit ≥3 themes and a live classifier will use the third) — E-PUL-1 is now scored on normal+burst (blocking); thin is recorded as tracking metric `thin-insufficient-data` — the low_sample flag exists precisely so small themes publish — cost if wrong: a 2-theme week could publish a pulse whose third theme has very few reviews (flagged "low sample").
+Final(P4): minor (deferred): NULL-validators ignores each mutation's expected gate code.
+Final(P4): minor (deferred): V2 ">5 themes" and V1 quote-count issues route to compose, which can't fix them (wasted retries).
+Final(P4): minor (deferred): every V6 issue routes to quotes, even one from a draft field (3 extra quote calls).
+Final(P4): minor (deferred): model-written summaries/actions/theme names aren't escape_md'd in the Markdown render.
+Final(P4): minor (deferred): V4 message echoes model theme_ids into validation.json/report.md.
+Final(P4): minor (deferred): pulses suite loses finished datasets if an LLMError is raised mid-suite.
+Final(P4): minor (deferred): deterministic suite creates data/pulse.db on a fresh machine.
+Final(P4): minor (deferred): strip(SURROUNDING_QUOTES) also strips a closing quote/apostrophe that belongs to the review.
+Final(P4): fixed #1 floats in E-PII-1 scan — test_artifact_scan_ignores_decimal_fractions RED→GREEN, suite 406/406
+Final(P4): fixed #3 quote word-count mismatch — test_verify_quote_counts_words_like_the_validator + test_overlong_quote_routes_to_quotes RED (checked against the old quotes.py via stash)→GREEN, suite 406/406
+Final(P4): fixed #4 mid-word spans — test_verify_quote_requires_word_boundaries RED→GREEN; NULL-quotes gains a span cut mid-word, suite 406/406
+Final(P4): fixed (re-graded) quote whitespace — test_quote_whitespace_is_collapsed RED→GREEN, suite 406/406
+Final(P4): fixed #2 LLM/budget errors in pulse stages — test_daily_budget_in_compose_fails_with_resume_hint, test_compose_error_is_retried_as_a_failed_attempt, test_compose_that_never_answers_fails_validation, test_request_too_large_counts_as_a_failed_pick RED→GREEN, suite 410/410
+Final(P4): fixed #5 (ruling above) — test_pulses_suite_records_first_attempt_pass asserts thin-insufficient-data tracking, RED (KeyError)→GREEN, suite 410/410
+Final(P4): fixed #6 Status table + Handoff rewritten (Phases 3–5 in flight); edgecase/evaluation updated; cross-check 138 cited tests all present.
 ```
