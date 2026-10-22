@@ -37,14 +37,16 @@ def test_endpoints_return_json_for_default_filter(web_client: Any) -> None:
         assert response.headers["x-content-type-options"] == "nosniff", path
     meta = web_client.get("/api/meta").json()
     assert meta["ready"] and meta["week"] == "2026-W42" and meta["window"]["start"] == "2026-07-27"
-    assert meta["themes"] == [
-        {"id": "withdrawals", "name": "Withdrawals"},
-        {"id": "charges", "name": "Charges"},
+    assert [(theme["id"], theme["name"]) for theme in meta["themes"]] == [
+        ("withdrawals", "Withdrawals"),
+        ("charges", "Charges"),
     ]
+    assert meta["themes"][0]["definition"] == "Withdrawals"
     assert meta["eligible"] == 7 and meta["total"] == 8 and "2026-W42" in meta["weeks"]
     assert web_client.get("/api/summary").json()["total"] == 7
     themes = web_client.get("/api/themes").json()
-    assert [stats["theme_id"] for stats in themes] == ["withdrawals", "charges"] and "arrow" in themes[0]
+    assert [stats["theme_id"] for stats in themes] == ["withdrawals", "charges", "unthemed"]
+    assert "arrow" in themes[0] and themes[2]["count"] == 1 and themes[2]["sentiment"] == {"positive": 1}
     page = web_client.get("/api/reviews", params={"ratings": [1, 2], "sort": "lowest_rating"}).json()
     assert page["total"] == 3 and [item["rating"] for item in page["items"]] == [1, 1, 2]
 

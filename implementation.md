@@ -27,7 +27,7 @@ Update this table whenever a task or phase changes state.
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
 | 5. Delivery | 🚧 Code complete and reviewed (2026-10-22): Tasks 5.1–5.3, the review fix pass, and Task 5.4 (the user's append-only hosted server; 461 tests). Checkpoint waits on the user: `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`, then `pulse doctor` and a live run. | `phase-5-deliver` (local) | Server: the user's gmail-gdocs-mcp on Render. **No Gmail draft** (server has no draft tool; user accepted). Stop after Phase 5; don't start Phase 6 without the user. |
 | 6 | Not started | — | — |
-| 7. Dashboard | 📝 Planned (2026-10-22): Tasks 7.1–7.4 written; no code yet. The user is designing the page in Google Stitch from the prompt in architecture §16. It can run alongside Phase 6 (it needs only Phase 5 code complete). | `phase-7-dashboard` (not created) | Local read-only web page: filters plus the weekly pulse. Task 7.4 waits on the user's Stitch export. |
+| 7. Dashboard | 🚧 Code complete (2026-10-22): Tasks 7.1–7.4 built test-first (500 tests) and run on the real data with `uv run pulse serve`. Not yet reviewed. Checkpoint (manual, in the browser) pending; Publish/Draft wait on the Phase 5 checkpoint. | `phase-7-dashboard` (local) | From `phase-5-deliver`. Design: the user's Stitch export, unchanged. |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
 
@@ -36,7 +36,7 @@ Update this table whenever a task or phase changes state.
 2. **Nothing is scheduled: the new chat owns the backfill.** The original chat's jobs (05:37 and 17:47 IST) were cancelled on 2026-10-22 at hand-over, so two chats never run or commit at once. Schedule them again in the new chat (see "Recreating the daily schedule" below) or run the command by hand once per UTC day. Check progress with `sqlite3 -readonly data/pulse.db "SELECT COUNT(*) FROM classifications; SELECT * FROM llm_usage"`, then either run the resume command once per UTC day by hand or schedule it again (CronCreate, laptop awake): `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Stop when the status is `AGGREGATED`.
 3. **The Phase 5 review, fix pass and Task 5.4 are done** (2026-10-22). Next: the Phase 5 checkpoint, once the user has put `MCP_AUTH_TOKEN` in `.env` and `delivery.doc_id` in `config/pulse.yaml`.
 4. Phase 6 has not started; don't start it without the user.
-5. **Phase 7 (Dashboard) is planned, not started** (2026-10-22). Tasks 7.1–7.3 need no input from the user. Task 7.4 needs the user's Stitch HTML export saved into `web/`. Ask before starting.
+5. **Phase 7 (Dashboard) is code complete** (2026-10-22) on `phase-7-dashboard`: `uv sync --extra web`, then `uv run pulse serve` and open http://127.0.0.1:8787. Next: the Phase 7 review (one fresh-context review of `phase-5-deliver..phase-7-dashboard`), then the browser checkpoint. Phase 6 has not started.
 
 
 **Where things stand**
@@ -2867,7 +2867,7 @@ Copy the plist to `~/Library/LaunchAgents/`, then run `launchctl load ~/Library/
 - `query` is a case-insensitive literal substring match on the scrubbed title and text. `%`, `_` and regex characters have no special meaning.
 - Dates use IST boundaries (AGG-1). `posted_on` is the IST date.
 
-- [ ] **Step 1: Write the failing tests** (`make_review`, `make_classification`, `tmp_settings`)
+- [x] **Step 1: Write the failing tests** (`make_review`, `make_classification`, `tmp_settings`)
 
 ```python
 def test_default_filter_matches_pipeline_aggregates(tmp_path) -> None: ...   # E-WEB-1: equals aggregate() on the window
@@ -2884,21 +2884,27 @@ def test_dataset_reloads_when_database_changes(tmp_path) -> None: ...
 def test_open_readonly_never_creates_or_writes_db(tmp_path) -> None: ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_web_queries.py -v`
 Expected: FAIL (`ModuleNotFoundError: pulse.web`).
 
-- [ ] **Step 3: Implement `queries.py` and `Store.open_readonly`** (SQLite URI `file:…?mode=ro`. A missing file raises `FileNotFoundError` instead of creating one.)
+- [x] **Step 3: Implement `queries.py` and `Store.open_readonly`** (SQLite URI `file:…?mode=ro`. A missing file raises `FileNotFoundError` instead of creating one.)
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_web_queries.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add read-only dashboard query layer"`
+
+> **As built (2026-10-22):**
+> - **Data basis:** `load_dataset` loads every stored review (not just the window), so `summary()` can compare with the previous period of equal length; it adds `Store.all_reviews()`. Labels are the latest taxonomy plus the current classify `prompt_version()`, as in the aggregate stage. The cache key is the database file's `st_mtime_ns` (the store has no WAL).
+> - **Store:** `Store.open_readonly` opens `file:…?mode=ro` with `check_same_thread=False` (the server reads from a thread pool); `Store.path` was added for the cache.
+> - **Additions for the design (Task 7.4):** a `highest_rating` sort and `unthemed_row()` (the Unthemed line under the themes, same basis, theme filter ignored).
+> - **Extra test:** `test_summary_counts_the_eligible_basis`. The sample data lives in `tests/web_data.py`.
 
 ---
 
@@ -2940,7 +2946,7 @@ Expected: all passed.
   - The endpoint returns 403 when `allow_export` is false.
 - **Headers:** every `/api` response carries `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 
-- [ ] **Step 1: Write the failing tests** (FastAPI `TestClient` over a `tmp_settings` store)
+- [x] **Step 1: Write the failing tests** (FastAPI `TestClient` over a `tmp_settings` store)
 
 ```python
 def test_endpoints_return_json_for_default_filter(web_client) -> None: ...
@@ -2955,21 +2961,27 @@ def test_no_review_text_or_query_in_logs(web_client, caplog) -> None: ...   # E-
 def test_serve_without_web_extra_prints_hint(monkeypatch) -> None: ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_web_api.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `app.py`, the settings, the extra and `pulse serve`**
+- [x] **Step 3: Implement `app.py`, the settings, the extra and `pulse serve`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv sync --extra dev --extra eval --extra web && uv run pytest tests/test_web_api.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add read-only dashboard API and pulse serve"`
+
+> **As built (2026-10-22):**
+> - **Filters** are parsed by hand from the query string (repeated parameters fill the list fields) and validated with `ReviewFilter`, so a 422 lists field names only: FastAPI's own 422 would echo the input. Unknown parameters are a 422 too.
+> - **Routes** sit on an `APIRouter(prefix="/api")`; shared state (settings, read-only store, jobs, hooks) is in `pulse/web/state.py`. FastAPI 0.159 keeps included routers nested, which the static test walks.
+> - **`/api/meta`** also returns theme definitions (row subtitles), `page_size` and `allow_export`. **`/api/themes`** ends with the Unthemed row.
+> - **`pulse serve`** imports the web extra inside the command; uvicorn runs with `access_log=False` and `log_level="warning"`.
 
 ---
 
@@ -3013,7 +3025,7 @@ Expected: all passed.
   - A pulse that failed validation is never delivered (OPS-4).
   - An append-only server appends once per week; a repeat ends with the job's `run_status` showing `doc_already_appended` (DEL-16).
 
-- [ ] **Step 1: Write the failing tests** (a fake `launch` records arguments; nothing really runs)
+- [x] **Step 1: Write the failing tests** (a fake `launch` records arguments; nothing really runs)
 
 ```python
 def test_pulse_view_matches_rendered_markdown(tmp_settings) -> None: ...    # every theme, share and quote in the view appears in pulse.md
@@ -3029,21 +3041,27 @@ def test_job_status_never_includes_process_output(web_client) -> None: ...
 def test_budget_reports_next_reset_in_ist(web_client) -> None: ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_web_pulse.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `pulse_view.py`, `jobs.py` and the endpoints**
+- [x] **Step 3: Implement `pulse_view.py`, `jobs.py` and the endpoints**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_web_pulse.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add weekly pulse view and run actions to the dashboard"`
+
+> **As built (2026-10-22):**
+> - **Seams:** `create_app(settings, today=…, hooks=ServerHooks(launch, readiness, now))`. Tests pass a fake launcher and a fixed readiness, so no test spawns a process or reaches an MCP server; an autouse fixture makes a forgotten fake fail loudly.
+> - **Readiness** is `cli.delivery_readiness(settings)`: the `delivery_config` and `mcp_tools` checks of `pulse doctor` (no Groq call), with `draft_supported` from the new `mcp_client.supports(cfg, op)`. A passing result is cached for 5 minutes (the hosted server can take a minute to wake); a failing one is re-checked on the next request.
+> - **Jobs** discard the CLI's stdout and stderr (`DEVNULL`); a finished job reads the week's run status and the warning codes from `runs/<id>/report.json` (codes only, e.g. `doc_already_appended`, `daily_token_budget`). Exit code 3 → `locked`.
+> - **Pulse view** returns `has_pulse: false` (with the run's status) when the latest run never reached compose, and adds `validated`, `max_words` and each quote's `theme_id`.
 
 ---
 
@@ -3073,7 +3091,7 @@ Expected: all passed.
   - No pulse for the week: a Generate button.
   - Budget used up: an amber banner with the reset time from `/api/llm-budget`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_index_and_assets_served(web_client) -> None: ...
@@ -3083,21 +3101,30 @@ def test_security_headers_present(web_client) -> None: ...             # CSP; no
 def test_cdn_scripts_pinned_to_exact_versions() -> None: ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_web_static.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Drop in the Stitch export, strip its sample data, write `app.js`, mount `web/` and write the README section**
+- [x] **Step 3: Drop in the Stitch export, strip its sample data, write `app.js`, mount `web/` and write the README section**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest -v && uv run ruff check .`
 Expected: all passed; ruff clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add Stitch-designed dashboard page wired to the API"`
+
+> **As built (2026-10-22):** the user's Stitch export (two pages and DESIGN.md, supplied in chat) became one `web/index.html` with both tabs; "no changes in design" (user).
+> - **Sample data removed:** every number, review and pulse line comes from the API. Elements with no data behind them were dropped: keywords and helpful votes on reviews, the release marker and fixed tooltip on the chart, squad tags and labels on quotes, priority labels, "Push to Jira" and "Sprint 43 backlog" on actions, the "Other states" chips and the "Review State Previews" toggle (its two empty states are now the real empty states). Claims the data can't back were reworded: "Synced 12m ago" → "Reviews to <date>", "Live cluster" → "Local only", the footer's "Real-time sync…" → "Local and read-only • Public App Store and Google Play reviews", "84% CSAT" → "% rated 4–5★", the theme legend drops the star ranges (bars use the classified sentiment).
+> - **Draft button:** kept as designed; when the MCP server has no draft tool it gets the `disabled` attribute and the tooltip "Your MCP server has no Gmail draft tool" (no new elements).
+> - **"Include short reviews"** keeps its label and maps to `include_excluded` (short and unsupported-language reviews); choosing Hindi or Other in the language menu turns it on. The label slightly undersells it.
+> - **"Hide duplicate reviews"** starts unchecked (the design showed it checked), so the default view equals the pipeline's numbers (E-WEB-1).
+> - **CSP:** besides `'self'`, cdnjs and the Tailwind CDN for scripts, it allows Google Fonts (`fonts.googleapis.com` styles, `fonts.gstatic.com` fonts) and `'unsafe-inline'` styles, which the Tailwind CDN needs. The Stitch Tailwind config moved to `web/tailwind.config.js` (no inline scripts). Pins: Tailwind 3.4.17, Chart.js 4.4.1.
+> - **Chart:** Chart.js with animation off (a redraw never shows a half-drawn frame).
+> - **Run on the real data (2026-10-22):** 12,978 reviews in the window, 2,177 eligible, 5 themes; console clean apart from the favicon 404 and Tailwind's CDN notice. Weekly pulse shows "Needs attention" for W42 (the paused backfill run) with Generate offered.
 
 ### Phase 7 checkpoint (manual, in the browser)
 

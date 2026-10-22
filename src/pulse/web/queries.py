@@ -21,7 +21,7 @@ from annotated_types import MaxLen
 from pulse.analysis.aggregate import ThemeStats, aggregate
 from pulse.config import StrictModel
 from pulse.llm.classify import prompt_version
-from pulse.models import Classification, Language, Review, Source, Taxonomy
+from pulse.models import UNTHEMED, Classification, Language, Review, Source, Taxonomy
 from pulse.store import Store
 from pulse.timeutil import Window, iso_week_label
 
@@ -37,7 +37,7 @@ REVIEW_FIELDS = (
     "title",
     "text",
 )
-SORTS = ("newest", "lowest_rating", "longest")
+SORTS = ("newest", "lowest_rating", "highest_rating", "longest")
 SOURCES: tuple[Source, ...] = ("play_store", "app_store")
 Sentiment = Literal["negative", "mixed", "positive"]
 Rating = Annotated[int, AtLeast(1), AtMost(5)]
@@ -186,6 +186,24 @@ def theme_breakdown(dataset: Dataset, flt: ReviewFilter) -> list[ThemeStats]:
     return agg.themes
 
 
+def unthemed_row(dataset: Dataset, flt: ReviewFilter) -> dict[str, Any]:
+    """The "Unthemed" line under the themes, on the same basis (classified reviews; theme filter ignored)."""
+    rows = filtered(dataset, flt.model_copy(update={"themes": []}))
+    labelled = [(review, label) for review, label in rows if label is not None]
+    members = [(review, label) for review, label in labelled if label.theme_id == UNTHEMED]
+    ratings = [review.rating for review, _ in members]
+    return {
+        "theme_id": UNTHEMED,
+        "name": "Unthemed",
+        "count": len(members),
+        "share": len(members) / len(labelled) if labelled else 0.0,
+        "mean_rating": mean(ratings) if ratings else None,
+        "sentiment": dict(Counter(label.sentiment for _, label in members)),
+        "trend_pts": None,
+        "arrow": "",
+    }
+
+
 def _window(dataset: Dataset, flt: ReviewFilter) -> Window:
     start, end = period(dataset, flt)
     return Window(start=start, end=end, iso_week=iso_week_label(end), timezone=dataset.window.timezone)
@@ -238,6 +256,7 @@ def review_page(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hint on
 _SORT_KEYS = {
     "newest": lambda row: (-row[0].posted_at.timestamp(), row[0].review_id),
     "lowest_rating": lambda row: (row[0].rating, -row[0].posted_at.timestamp(), row[0].review_id),
+    "highest_rating": lambda row: (-row[0].rating, -row[0].posted_at.timestamp(), row[0].review_id),
     "longest": lambda row: (-row[0].word_count, -row[0].posted_at.timestamp(), row[0].review_id),
 }
 

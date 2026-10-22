@@ -61,6 +61,18 @@ A re-run of the same week doesn't append a second copy; `--force` appends again 
 
 **Mode B (no MCP server):** run `uv run pulse run --week <week> --dry-run`, then ask a Claude Code session with the claude.ai Google Drive and Gmail connectors to publish `runs/<run_id>/pulse.md` as a Doc and create the draft.
 
+## Dashboard (local, read-only)
+
+```bash
+uv sync --extra dev --extra eval --extra web   # once: adds FastAPI
+uv run pulse serve                             # then open http://127.0.0.1:8787
+```
+
+- **Analyse** filters the stored reviews (timeline, store, rating, sentiment, search, theme, language, version) and shows the summary cards, the theme breakdown, the weekly trend, the rating split and the review feed, with CSV export. The filters live in the URL, so a view can be shared.
+- **Weekly pulse** shows the week's latest pulse exactly as validated. **Generate pulse** runs `pulse run --week W --dry-run`; **Publish to Google Docs** and **Create Gmail draft** run the delivery stages, once `pulse doctor`'s delivery checks pass. With the hosted append-only MCP server, Draft stays disabled (no draft tool).
+- It listens on 127.0.0.1 only, opens the database read-only, shows only scrubbed review text and writes no access log. Every change goes through the normal `pulse run` command, so its lock and validation gates still apply.
+- The page is the Google Stitch design in `web/` (Tailwind and Chart.js from pinned CDN versions), so the browser needs internet access for its styles.
+
 ## Where things live
 
 | Path | In git? | What it is |

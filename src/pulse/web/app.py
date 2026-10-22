@@ -9,10 +9,12 @@ import csv
 import io
 from dataclasses import asdict
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from pulse.analysis.aggregate import trend_arrow
@@ -29,6 +31,7 @@ from pulse.web.queries import (
     review_page,
     summary,
     theme_breakdown,
+    unthemed_row,
     weekly_trend,
 )
 from pulse.web.state import DashboardState, InvalidRequest, NotReady, ServerHooks, allowed_hosts, valid_week
@@ -37,6 +40,22 @@ LIST_FIELDS = frozenset({"sources", "ratings", "themes", "sentiments", "language
 PAGE_PARAMS = frozenset({"week", "sort", "page", "page_size"})
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 NOT_READY = "No review database yet. Run `pulse ingest` first."
+WEB_DIR = Path(__file__).resolve().parents[3] / "web"  # the Stitch page and app.js (Task 7.4)
+# Scripts: only this server, Chart.js on cdnjs and the Tailwind CDN, each pinned in index.html. Styles allow
+# 'unsafe-inline' because the Tailwind CDN injects a <style> element; fonts come from Google Fonts.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+    )
+)
 
 
 def create_app(settings: Settings, *, today: date | None = None, hooks: ServerHooks | None = None) -> FastAPI:
@@ -46,6 +65,8 @@ def create_app(settings: Settings, *, today: date | None = None, hooks: ServerHo
     _install_guards(app, settings)
     app.include_router(router)
     app.include_router(actions_router)
+    if WEB_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
     return app
 
 
@@ -57,9 +78,12 @@ def _install_guards(app: FastAPI, settings: Settings) -> None:
         if request.headers.get("host") not in allowed:  # DNS rebinding
             return JSONResponse({"error": "host not allowed"}, status_code=400)
         response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
         if request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-store"
-            response.headers["X-Content-Type-Options"] = "nosniff"
+        else:
+            response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+            response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     @app.exception_handler(InvalidRequest)
@@ -133,10 +157,12 @@ def summary_route(request: Request) -> dict[str, Any]:
 @router.get("/themes")
 def themes_route(request: Request) -> list[dict[str, Any]]:
     week, flt = parse_filter(request)
-    return [
+    dataset = dashboard(request).dataset(week)
+    themes = [
         asdict(stats) | {"arrow": trend_arrow(stats.trend_pts, stats.trend_significant)}
-        for stats in theme_breakdown(dashboard(request).dataset(week), flt)
+        for stats in theme_breakdown(dataset, flt)
     ]
+    return [*themes, unthemed_row(dataset, flt)] if themes else themes
 
 
 @router.get("/trend")
@@ -198,7 +224,7 @@ def _meta(dataset: Dataset, settings: Settings) -> dict[str, Any]:
         "week": window.iso_week,
         "window": {"start": window.start.isoformat(), "end": window.end.isoformat()},
         "weeks": sorted(weeks | {window.iso_week}, reverse=True),
-        "themes": [{"id": theme.id, "name": theme.name} for theme in themes],
+        "themes": [{"id": theme.id, "name": theme.name, "definition": theme.definition} for theme in themes],
         "app_versions": sorted(versions, key=_version_key, reverse=True),
         "languages": sorted({review.language for review in dataset.reviews}),
         "total": len(in_window),

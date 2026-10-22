@@ -53,7 +53,8 @@ def pulse_view(store: Store, settings: Settings, iso_week: str) -> dict[str, Any
     if ctx is None or not markdown_path.is_file():
         return view | {"has_pulse": False}
     markdown = markdown_path.read_text(encoding="utf-8")
-    return view | {"has_pulse": True, "markdown": markdown, **_pulse_fields(ctx, markdown, run_dir)}
+    fields = _pulse_fields(ctx, markdown, run_dir)
+    return view | {"has_pulse": True, "markdown": markdown, "max_words": settings.pulse.max_words, **fields}
 
 
 def _window(data: dict[str, str]) -> Window:
@@ -102,7 +103,13 @@ def _pulse_fields(ctx: PulseContext, markdown: str, run_dir: Path) -> dict[str, 
             for theme in ctx.themes
         ],
         "quotes": [
-            {"text": quote.text, "rating": quote.rating, "source": quote.source, "month": quote.month}
+            {
+                "text": quote.text,
+                "rating": quote.rating,
+                "source": quote.source,
+                "month": quote.month,
+                "theme_id": quote.theme_id,
+            }
             for quote in ctx.quotes
         ],
         "actions": [{"text": action.action, "themes": action.theme_names} for action in ctx.actions],

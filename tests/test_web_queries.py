@@ -121,6 +121,10 @@ def test_review_items_carry_only_allowlisted_fields(dataset: Dataset) -> None:  
     assert page["items"][0]["posted_on"] == "2026-10-15" and page["items"][0]["theme"] == "charges"
     lowest = review_page(dataset, ReviewFilter(), "lowest_rating", 1, 50)["items"]
     assert [item["rating"] for item in lowest] == sorted(item["rating"] for item in lowest)
+    highest = [
+        item["rating"] for item in review_page(dataset, ReviewFilter(), "highest_rating", 1, 50)["items"]
+    ]
+    assert highest == sorted(highest, reverse=True)
 
 
 def test_dataset_reloads_when_database_changes(db_path: Path) -> None:

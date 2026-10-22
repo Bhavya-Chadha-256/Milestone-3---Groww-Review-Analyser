@@ -14,3 +14,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+
+# Browser screenshots from manual dashboard checks
+.playwright-mcp/

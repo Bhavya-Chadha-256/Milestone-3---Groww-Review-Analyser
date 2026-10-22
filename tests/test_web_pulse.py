@@ -63,7 +63,8 @@ def test_pulse_view_matches_rendered_markdown(tmp_settings: Settings, tmp_store:
             and f"{theme['share_pct']}%" in markdown
             and theme["summary"] in markdown
         )
-    assert all(quote["text"] in markdown for quote in view["quotes"])
+    assert all(quote["text"] in markdown and quote["theme_id"] for quote in view["quotes"])
+    assert view["max_words"] == tmp_settings.pulse.max_words
     assert all(action["text"] in markdown for action in view["actions"])
     assert view["word_count"] == count_words(markdown)
     assert view["checks"] == {f"V{number}": True for number in range(1, 8)}
