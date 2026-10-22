@@ -1,9 +1,12 @@
-"""A complete, valid pulse input for render and validate tests (Task 4.3); tests mutate a fresh copy."""
+"""Oracle and null baselines for the validators (evaluation §5 rule 7, Tasks 4.3 and 4.5).
 
+`valid_inputs()` is a complete pulse that must pass every gate (it renders to tests/fixtures/pulse_golden.md);
+each function in `MUTATIONS` breaks exactly one gate. Unit tests and the deterministic suite share them.
+"""
+
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
-from factories import make_classification, make_review
 
 from pulse.analysis.aggregate import Aggregates, ThemeStats
 from pulse.config import PulseSettings
@@ -100,10 +103,7 @@ def aggregates(window: Window = WINDOW, sources: dict[str, int] | None = None) -
 
 
 def valid_inputs() -> PulseInputs:
-    reviews = {
-        f"{theme_id}0": make_review(review_id=f"{theme_id}0", text=text, rating=1)
-        for theme_id, text in REVIEW_TEXTS.items()
-    }
+    reviews = {f"{theme_id}0": _review(f"{theme_id}0", text) for theme_id, text in REVIEW_TEXTS.items()}
     return PulseInputs(
         agg=aggregates(),
         top=[stats(*theme) for theme in THEMES],
@@ -111,7 +111,7 @@ def valid_inputs() -> PulseInputs:
         quotes=valid_quotes(),
         taxonomy=valid_taxonomy(),
         reviews=reviews,
-        labels={review_id: make_classification(review_id, review_id[:-1]) for review_id in reviews},
+        labels={review_id: _label(review_id, review_id[:-1]) for review_id in reviews},
         limits=PulseSettings(),
     )
 
@@ -174,3 +174,97 @@ def valid_draft() -> PulseDraft:
             for theme_ids, action, rationale in actions
         ],
     )
+
+
+def _review(review_id: str, text: str) -> Review:
+    return Review(
+        review_id=review_id,
+        source="play_store",
+        rating=1,
+        title=None,
+        text=text,
+        posted_at=datetime(2026, 10, 14, 10, 0, tzinfo=UTC),
+        app_version="18.22.0",
+        language="en",
+        word_count=len(text.split()),
+        text_hash=review_id,
+    )
+
+
+def _label(review_id: str, theme_id: str) -> Classification:
+    return Classification(
+        review_id=review_id,
+        theme_id=theme_id,
+        sentiment="negative",
+        taxonomy_version=1,
+        prompt_version="classify-v1",
+    )
+
+
+LONG_TEXT = " ".join(f"word{index}" for index in range(45))
+
+
+def drop_one_action(inputs: PulseInputs) -> None:
+    inputs.draft.actions.pop()
+
+
+def swap_theme_order(inputs: PulseInputs) -> None:
+    themes = inputs.draft.themes
+    themes[0], themes[1] = themes[1], themes[0]
+
+
+def alter_quote_word(inputs: PulseInputs) -> None:
+    inputs.quotes[0].text = inputs.quotes[0].text.replace("stuck", "blocked")
+
+
+def duplicate_quote_review(inputs: PulseInputs) -> None:
+    inputs.quotes[1] = inputs.quotes[0].model_copy(update={"theme_id": "charges"})
+
+
+def action_with_unknown_theme(inputs: PulseInputs) -> None:
+    inputs.draft.actions[0].theme_ids = ["support"]
+
+
+def summary_19_words(inputs: PulseInputs) -> None:
+    inputs.draft.themes[0].summary = " ".join(["slow"] * 19)
+
+
+def pad_note_over_250_words(inputs: PulseInputs) -> None:
+    """Every field at its limit: no field is too long, but the note is."""
+    for summary in inputs.draft.themes:
+        summary.summary = " ".join(["delay"] * 18)
+    for action in inputs.draft.actions:
+        action.action = " ".join(["improve"] * 20)
+    for quote in inputs.quotes:
+        review = inputs.reviews[quote.review_id]
+        inputs.reviews[quote.review_id] = review.model_copy(update={"text": LONG_TEXT})
+        quote.text = " ".join(LONG_TEXT.split()[:30])
+
+
+def quote_with_upi_placeholder(inputs: PulseInputs) -> None:
+    review = inputs.reviews["withdrawals0"]
+    inputs.reviews["withdrawals0"] = review.model_copy(update={"text": review.text + " Refund to [upi] now"})
+    inputs.quotes[0].text = "Refund to [upi] now"
+
+
+def summary_with_email(inputs: PulseInputs) -> None:
+    inputs.draft.themes[0].summary = "Users ask to write to ravi.kumar@example.com for help."
+
+
+def summary_with_percentage(inputs: PulseInputs) -> None:
+    inputs.draft.themes[0].summary = "About 30% say payouts are late."
+
+
+Mutation = Callable[[PulseInputs], None]
+MUTATIONS: list[tuple[Mutation, str]] = [
+    (drop_one_action, "V1"),
+    (swap_theme_order, "V2"),
+    (alter_quote_word, "V3"),
+    (duplicate_quote_review, "V3"),
+    (action_with_unknown_theme, "V4"),
+    (summary_19_words, "V5"),
+    (pad_note_over_250_words, "V5"),
+    (quote_with_upi_placeholder, "V6"),
+    (summary_with_email, "V6"),
+    (summary_with_percentage, "V7"),
+]

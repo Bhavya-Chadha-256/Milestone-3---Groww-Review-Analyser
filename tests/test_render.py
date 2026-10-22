@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-from pulse_fixtures import aggregates, valid_inputs
 
+from pulse.evals.oracle import aggregates, valid_inputs
 from pulse.report.render import build_context, render_html, render_markdown, render_text
 from pulse.report.words import count_words, escape_md
 from pulse.timeutil import window_for_week
