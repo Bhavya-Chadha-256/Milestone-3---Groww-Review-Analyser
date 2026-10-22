@@ -60,8 +60,21 @@ class Store:
     def __init__(self, path: Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
+
+    @classmethod
+    def open_readonly(cls, path: Path) -> "Store":
+        """The database opened read-only (the dashboard, Task 7.1): never created, migrated or written."""
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        store = cls.__new__(cls)
+        store.path = path
+        # check_same_thread=False: the web server reads from a thread pool; it never writes.
+        store.conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, check_same_thread=False)
+        return store
 
     # Reviews
 
@@ -104,6 +117,11 @@ class Store:
             "ORDER BY posted_at, review_id",
             (_timestamp_key(start_utc), _timestamp_key(end_utc), int(eligible_only)),
         )
+        return [Review.model_validate_json(data) for (data,) in rows]
+
+    def all_reviews(self) -> list[Review]:
+        """Every stored review, oldest first."""
+        rows = self.conn.execute("SELECT data FROM reviews ORDER BY posted_at, review_id")
         return [Review.model_validate_json(data) for (data,) in rows]
 
     def review_ids(self) -> set[str]:
