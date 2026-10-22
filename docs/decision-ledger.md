@@ -194,4 +194,5 @@ Task 7.5: Ruling: hosted mode is read-only (no jobs, no MCP/Groq, no secrets) �
 Task 7.5: Ruling: snapshot = gzip(SQLite backup) with mtime=0 + newest pulse run per week — ~1.2 MB per update in git history — cost if wrong: move to a release asset or a private repo.
 Task 7.5: Ruling: /healthz exempt from the Host check (Render's probe uses an internal name) — no data on it — cost if wrong: none.
 User (2026-10-22): asked to push everything; pushed phase-3/4/5/7 branches (not archive/full-history), no merges.
+User (2026-10-22): "add all changes to main" — Render's branch is main. Fast-forwarded main to phase-7-dashboard (45 commits) and pushed; render.yaml branch → main. Checkpoints for Phases 3–5 and 7 remain open (merge came first, by request).
 ```

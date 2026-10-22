@@ -6,7 +6,7 @@ services:
     name: groww-review-pulse
     runtime: python
     plan: free
-    branch: phase-7-dashboard          # switch to main once the phases are merged
+    branch: main
     buildCommand: pip install -e ".[web]"
     startCommand: pulse serve --public --snapshot deploy/snapshot
     healthCheckPath: /healthz

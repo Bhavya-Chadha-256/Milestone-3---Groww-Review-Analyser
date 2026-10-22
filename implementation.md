@@ -38,7 +38,7 @@ Update this table whenever a task or phase changes state.
 4. Phase 6 has not started; don't start it without the user.
 5. **Phase 7 (Dashboard) is code complete** (2026-10-22) on `phase-7-dashboard`: `uv sync --extra web`, then `uv run pulse serve` and open http://127.0.0.1:8787. **Hosting:** read-only on Render from the committed `deploy/snapshot/` (`deployment.md`; no env vars); refresh with `pulse snapshot`, commit, push. The user deploys it via New → Blueprint. Next: the Phase 7 review (one fresh-context review of `phase-5-deliver..phase-7-dashboard`), then the browser checkpoint. Phase 6 has not started.
 6. **Nothing is scheduled.** No weekly fetch/run job exists yet (Phase 6, Task 6.4: a launchd job on the Mac, which needs the Mac on and awake). The backfill resumes only when someone runs `uv run pulse run --week 2026-W42 --from classify --until aggregate` after 00:00 UTC, then `pulse snapshot` + push to refresh Render.
-7. **All branches pushed** to GitHub on 2026-10-22 (`phase-3-themes`, `phase-4-pulse`, `phase-5-deliver`, `phase-7-dashboard`; never `archive/full-history`). None merged into `main`.
+7. **Merged into `main`** (fast-forward, 2026-10-22, at the user's request so Render's default branch deploys the dashboard). This was before the Phase 3–5 and 7 checkpoints, which stay open; their tags (`phase-3` …) come when each checkpoint passes. Start new work on a branch from `main`. Never push `archive/full-history`.
 
 
 **Where things stand**

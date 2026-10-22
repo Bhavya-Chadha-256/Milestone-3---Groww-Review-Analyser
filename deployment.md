@@ -38,8 +38,8 @@ The **Review Pulse** dashboard can run on Render's free tier as a **read-only** 
 
 ## First deploy (one time)
 
-1. Push the branch named in `render.yaml` (it starts as `phase-7-dashboard`; switch it to `main` once the phases are merged).
-2. In the [Render dashboard](https://dashboard.render.com): **New → Blueprint**, connect the GitHub repo `Milestone-3---Groww-Review-Analyser`, and pick that branch. Render reads `render.yaml` and creates the web service `groww-review-pulse` on the **Free** plan.
+1. Make sure `main` is pushed: Render deploys `main` (`render.yaml`). All phases were merged into `main` on 2026-10-22 so Render's default branch has the dashboard.
+2. In the [Render dashboard](https://dashboard.render.com): **New → Blueprint**, connect the GitHub repo `Milestone-3---Groww-Review-Analyser`, and pick `main`. Render reads `render.yaml` and creates the web service `groww-review-pulse` on the **Free** plan.
 3. Wait for the build (`pip install -e ".[web]"`) and the health check (`/healthz`). Then open `https://groww-review-pulse.onrender.com`, or whatever name Render gave the service.
 
 **Without a Blueprint:** choose **New → Web Service** and use the same values:
@@ -90,5 +90,6 @@ The header shows how fresh the data is: "Reviews to 18 Oct · updated 22 Oct".
 |---|---|
 | Deploy fails at the health check | Check the logs for `Review Pulse dashboard: http://<name>.onrender.com`. If it says "cannot serve publicly … public_hosts", `RENDER_EXTERNAL_HOSTNAME` is missing; pass `--allowed-host <name>.onrender.com` in the start command |
 | Every page returns `{"error": "host not allowed"}` | A custom domain is in use. Add `--allowed-host your.domain` to the start command |
-| Old numbers after a push | Render is still deploying. Check that the push went to the branch in `render.yaml`, and that `deploy/snapshot/pulse.db.gz` changed in the commit |
+| Old numbers after a push | Render is still deploying. Check that the push went to `main`, and that `deploy/snapshot/pulse.db.gz` changed in the commit |
+| `No such command 'serve'` | Render built an old commit or another branch (the log installs `anthropic` and no `fastapi`). Set **Settings → Build & Deploy → Branch** to `main` and the build command to `pip install -e ".[web]"`, then **Manual Deploy → Deploy latest commit** |
 | The page has no styles or charts | The browser couldn't reach the Tailwind or cdnjs CDNs (pinned versions; see the CSP in `src/pulse/web/app.py`) |
