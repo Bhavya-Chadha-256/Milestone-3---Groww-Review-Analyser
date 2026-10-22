@@ -145,6 +145,14 @@ Every judge criterion is **atomic and binary**, with one call per action per cri
 | E-DEL-1 | Stub integration | Tasks 5.1–5.3 tests against the stub MCP server: create, update, recreate, idempotency, forbidden tools, resume | code | 100% | 🔴 |
 | E-DEL-2 | Live end-to-end checklist | Doc exists in the folder, with a title matching the week and content matching `pulse.md`. Exactly one draft, to the configured recipient, linking to the Doc. A re-run creates no duplicates. **With the chosen append-only server (2026-10-22):** the week's section appears once in the running Doc, matching `pulse.md`; the report says "No Gmail draft"; a re-run appends nothing. | human | All items pass | 🔴 (Phase 5 checkpoint) |
 
+### 4.8 Dashboard (Phase 7; pinned by pytest, no eval suite)
+
+| ID | Metric | Definition | Grader | Target | Gate |
+|---|---|---|---|---|---|
+| E-WEB-1 | Number parity | With default filters, the dashboard's theme counts, shares, mean ratings and trend points equal `aggregate()` / `aggregates.json` for the same window | code | 100% | 🔴 |
+| E-WEB-2 | Field allowlist | Every review item and CSV row has exactly `REVIEW_FIELDS`, and the text is the scrubbed `Review.text` | code | 100% | 🔴 |
+| E-WEB-3 | Quiet logs | Exercising every endpoint with a keyword leaves no review text and no query string in the captured logs | code | 100% | 🔴 |
+
 ---
 
 ## 5. Harness rules
@@ -376,3 +384,5 @@ The Groq free tier costs $0, so the constraint is tokens per day per model: abou
 | Production monitors (M-*) | 6.3 |
 | Human review template and exit criterion | 6.4 |
 | Release gates | Phase 6 checkpoint |
+| E-WEB-1 (7.1 `test_default_filter_matches_pipeline_aggregates`), E-WEB-2 (7.1 `test_review_items_carry_only_allowlisted_fields`), E-WEB-3 (7.2 `test_no_review_text_or_query_in_logs`) | 7.1, 7.2 |
+| Dashboard browser checklist | Phase 7 checkpoint |

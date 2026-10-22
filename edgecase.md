@@ -231,3 +231,27 @@ The design accepts these rather than eliminating them. Each is watched by a huma
 | Free-tier limits | Groq can change free-plan limits or retire a model | The project needs only a key; limits and models are config values | `pulse doctor` (LLM-14); M-COST-2 daily-budget warning |
 | AGG-9, AGG-12, OPS-5 | Display rounding; DST; a sleeping Mac | Cosmetic, not applicable, or self-healing | — |
 | Judge reliability | The judge (`qwen/qwen3.8-27b`) is a mid-size open model (evaluation §7.2) | Free, a different family from the pipeline model, its own quota | Calibration against human labels (evaluation §7.3) |
+
+---
+
+## 11. Dashboard (Phase 7)
+
+| ID | Case | Expected behavior | Sev | Status | Owner / verified by |
+|---|---|---|---|---|---|
+| WEB-1 | Dashboard numbers drift from the pulse | Theme statistics come from `aggregate()`; with default filters they equal `aggregates.json` | H | ✅ | 7.1 `test_default_filter_matches_pipeline_aggregates` (E-WEB-1) |
+| WEB-2 | A response or CSV carries a field beyond the scrubbed allowlist | Items are built from `REVIEW_FIELDS` only | H | ✅ | 7.1 `test_review_items_carry_only_allowlisted_fields` (E-WEB-2) |
+| WEB-3 | Review text or a search term in the server log | No access log; nothing logs query strings or review text | H | ✅ | 7.2 `test_no_review_text_or_query_in_logs` (E-WEB-3) |
+| WEB-4 | A review containing `<script>` or HTML | Rendered as text; `app.js` never uses `innerHTML` | H | ✅ | 7.4 `test_app_js_never_uses_inner_html`, `test_security_headers_present` |
+| WEB-5 | An exported cell starting with `=`, `+`, `-` or `@` (formula injection) | Gets a leading `'`; the export is capped at `export_max_rows` | M | ✅ | 7.2 `test_csv_export_neutralises_formulas_and_respects_cap` |
+| WEB-6 | Another website POSTs to `127.0.0.1:8787` (CSRF), or a rebinding DNS name reaches the server | 403 without `X-Pulse-Client` or with a foreign `Origin`; 400 for a foreign `Host`; bind is loopback only | H | ✅ | 7.3 `test_post_requires_client_header_and_same_origin`, 7.2 `test_foreign_host_header_rejected`, `test_settings_reject_non_loopback_host` |
+| WEB-7 | A crafted `week` or action reaches the subprocess | Week validated before launch; arguments from a fixed table; no shell | H | ✅ | 7.3 `test_invalid_week_rejected_before_launch`, `test_jobs_use_fixed_argument_table` |
+| WEB-8 | Generate pressed twice, or while a CLI run holds the lock | 409 for a second job; a held pipeline lock ends the job `locked` (DEL-11) | M | ✅ | 7.3 `test_second_job_while_running_returns_409`, `test_locked_pipeline_reports_locked` |
+| WEB-9 | The dashboard starts before `pulse ingest` (no database) | `ready: false`, an empty state, and no file created | M | ✅ | 7.2 `test_missing_database_reports_not_ready`, 7.1 `test_open_readonly_never_creates_or_writes_db` |
+| WEB-10 | The dashboard writes the database | Opened with `mode=ro`; bytes unchanged after every endpoint | H | ✅ | 7.2 `test_api_never_writes_the_database` |
+| WEB-11 | A filter combination matches nothing | Zeros and `None`, never an error; the UI shows "Clear filters" | L | ✅ | 7.1 `test_empty_result_returns_zeros_not_errors` |
+| WEB-12 | A keyword with `%`, `_` or regex characters | Literal, case-insensitive substring match | L | ✅ | 7.1 `test_query_is_case_insensitive_literal` |
+| WEB-13 | A date filter at the IST week boundary | IST dates; 00:30 IST Monday falls in the new week (AGG-1) | M | ✅ | 7.1 `test_date_filter_uses_ist_boundaries` |
+| WEB-14 | A theme or sentiment filter while the backfill is unfinished | Unclassified reviews drop out, and the count shows in the data-quality note | M | ✅ | 7.1 `test_theme_and_sentiment_filters_drop_unclassified` |
+| WEB-15 | Publish or Draft pressed before delivery is configured, or Draft on a server with no draft tool | 409 with the `pulse doctor` reason; Draft disabled while `draft_supported` is false (DEL-15) | M | ✅ | 7.3 `test_delivery_actions_blocked_until_doctor_passes`, `test_draft_blocked_when_server_has_no_draft_tool` |
+| WEB-16 | The process's output leaks through job status | Job status carries only the state, exit code and run status | M | ✅ | 7.3 `test_job_status_never_includes_process_output` |
+| WEB-17 | A CDN script changes under the page | Exact pinned versions; CSP allows only those hosts | L | ✅ | 7.4 `test_cdn_scripts_pinned_to_exact_versions` |

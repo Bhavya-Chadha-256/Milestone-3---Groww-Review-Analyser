@@ -569,6 +569,7 @@ Raw source exports in `data/raw/` are the only place un-scrubbed text exists. Th
 | Public sources only | Apple's public feed, plus `google-play-scraper` for Play (§3.1). Both go through raw files and `FileImportSource`. Nothing logs in to a store. |
 | No direct Google API use | Delivery goes only through the MCP client, and a test fails if any Google API client library is added as a dependency |
 | Secrets | The LLM key (`GROQ_API_KEY`; the Groq free tier was chosen 2026-10-21) comes from the environment or a git-ignored `.env`, loaded by `pulse.config.load_env`. `.env.example` is the committed template. Google OAuth lives inside the MCP server. |
+| Dashboard (Phase 7) | Shows and exports only the scrubbed `Review.text`, through a fixed field allowlist (E-WEB-2). It opens the database read-only, binds loopback only and logs no requests or query strings (E-WEB-3). The CSV export neutralises spreadsheet formulas. Showing scrubbed text in a browser is a new place where text appears; the user accepted that on 2026-10-22 (§16). |
 
 ---
 
@@ -669,6 +670,13 @@ privacy:
   extra_patterns: []                     # Groww client-code / order-ID formats; fill before first real run
 retention:
   raw_days: 14
+dashboard:                               # Phase 7 (§16)
+  host: 127.0.0.1                        # loopback only; anything else fails to load
+  port: 8787
+  page_size: 50
+  max_page_size: 200
+  allow_export: true                     # CSV of scrubbed reviews
+  export_max_rows: 5000
 paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings }
 ```
 
@@ -686,7 +694,8 @@ paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings
 │   ├── mcp.yaml
 │   └── mappings/                 # app_store_feed.yaml, play_store_feed.yaml (our raw exports), generic.yaml (third-party exports)
 ├── src/pulse/
-│   ├── cli.py                    # pulse fetch | raw | ingest | run | doctor | rediscover | eval
+│   ├── cli.py                    # pulse fetch | raw | ingest | run | doctor | rediscover | eval | serve (Phase 7)
+│   ├── web/                      # Phase 7: queries, app (FastAPI), pulse_view, jobs
 │   ├── acquire/                  # app_store_feed (Apple public feed), play_store, raw_export
 │   ├── pipeline.py               # RunContext, stage registry, resume, run lock
 │   ├── config.py · models.py · timeutil.py · store.py (monitors.py in Phase 6)
@@ -702,6 +711,7 @@ paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings
 │   ├── gold/ · redteam/ · stability/ · calibration/ · human/
 │   └── results/                  # git-ignored
 ├── ops/launchd/                  # weekly schedule
+├── web/                          # Phase 7: index.html (Stitch export) + app.js, no build step
 ├── tests/                        # incl. fakes.py, stub_mcp.py (in-process MCPServer), fixtures/weeks/generate.py
 ├── data/                         # git-ignored
 └── runs/                         # git-ignored
@@ -726,6 +736,7 @@ pulse run --force                     # allow over-budget runs; re-create the dr
 pulse rediscover                      # force a new taxonomy version
 pulse eval --suite deterministic|classification|pulses|judges|injection|stability|all
 pulse eval --calibrate <family> · --export-gold 200 · --compare A B · --dataset drift
+pulse serve [--port 8787]             # Phase 7 dashboard at http://127.0.0.1:8787 (needs `uv sync --extra web`)
 ```
 
 **Scheduling [Decision]:** start with manual weekly runs. Once 3 consecutive pulses pass human review (evaluation §6), add a local `launchd` job on Monday at 09:00 on a Mac set to IST, where the MCP server is already authorized. The job must fetch fresh reviews (`pulse fetch play-store`, `pulse fetch app-store`) before `pulse run`, because `pulse run` only ingests what is already in `data/raw/`. Hosted scheduling (CI or a managed agent deployment) is deferred: it needs a Workspace MCP server that is reachable remotely and has persistent auth.
@@ -744,7 +755,7 @@ pulse eval --calibrate <family> · --export-gold 200 · --compare A B · --datas
 
 ## 13. Build Plan
 
-The build happens in seven phases (0–6). Each ends with a working command and a checkpoint; details are in [implementation.md](implementation.md).
+The build happens in eight phases (0–7). Each ends with a working command and a checkpoint; details are in [implementation.md](implementation.md).
 
 | Phase | Scope | Working at the end | Exit criteria |
 |---|---|---|---|
@@ -755,6 +766,7 @@ The build happens in seven phases (0–6). Each ends with a working command and 
 | 4. Pulse | Quotes, compose, render, validate, dry run, fixture datasets, pulse evals | `pulse run --dry-run` | V1–V7 pass; E-PUL-1 = 100%; E-QUO-1 = 100% |
 | 5. Delivery | MCP gateway, Docs, Gmail, doctor, resume | `pulse doctor` + `pulse run` | E-DEL-1, E-DEL-2 pass; no duplicates on re-run |
 | 6. Evaluate, harden & launch | Judges and calibration, injection and stability suites, monitors, human review, schedule | `pulse eval --suite all` + launchd | Release gates (evaluation §9.3) |
+| 7. Dashboard | Read-only query layer, local API and `pulse serve`, pulse view and run actions, Stitch-designed page (§16). Needs only Phase 5 code complete; may run alongside Phase 6. | `pulse serve` | E-WEB-1…3; manual browser checklist |
 
 ---
 
@@ -777,7 +789,10 @@ The build happens in seven phases (0–6). Each ends with a working command and 
 | Classification order | Newest reviews first | Oldest first | A budget-stopped backfill still covers the weeks the pulse reports on |
 | Model | Groq free tier: `openai/gpt-oss-120b` on all stages, `reasoning_effort` tuned per stage, strict structured outputs | Anthropic `claude-opus-5-5` (no key available); a local model (an 8 GB laptop is too small, and the project must not depend on one machine) | Free, needs only an API key on any machine, supports strict JSON schemas. The cost is rate limits: a first backfill of about three days. |
 | Eval judge | `qwen/qwen3.8-27b` (a different family); binary per-criterion questions; must pass human calibration | The pipeline model as its own judge; 1–5 scores | Free, with its own quota, and less self-preference. Binary questions are easier to calibrate. |
-| Build order | Seven phases (0–6), each ending in a working command, built on phase branches | One continuous task list | Each phase can be demoed and checked before the next one starts |
+| Dashboard stack (Phase 7) | FastAPI + uvicorn (optional `web` extra) serving static Stitch HTML + one `app.js`; Chart.js from a CDN | A React/Node app; Streamlit | No Node toolchain or build step; the Stitch export drops in as is; Streamlit can't reproduce the Stitch design |
+| Dashboard data access | Load the window's reviews and labels into memory (about 13K rows), filter in Python, and reuse `aggregate()` | New SQL queries and indexes per filter | Small data; the numbers match the pipeline by construction (E-WEB-1); no schema change |
+| Dashboard actions | Launch `pulse run …` as a subprocess from a fixed argument table | Call stages in-process | Keeps the run lock, validation gates and MCP allowlist in one place; the server stays read-only |
+| Build order | Eight phases (0–7), each ending in a working command, built on phase branches | One continuous task list | Each phase can be demoed and checked before the next one starts |
 
 ---
 
@@ -794,3 +809,49 @@ These carry over from [problemStatement.md §9](problemStatement.md), plus new o
 7. **Window:** 8 or 12 weeks by default? (The current default is 12, with top 3 over the window.)
 
 **Resolved:** eval judges use `qwen/qwen3.8-27b`, a different family from the pipeline model (§9, §14).
+
+---
+
+## 16. Dashboard (Phase 7, added 2026-10-22)
+
+A local web page for the team: explore reviews with filters, and read, generate and send the weekly pulse. It goes beyond the brief and changes nothing in the pipeline.
+
+```
+browser ──HTTP (127.0.0.1:8787)──▶ FastAPI (pulse serve)
+                                     ├─ GET /api/*  ──▶ queries.py ──read-only──▶ data/pulse.db
+                                     │                 └─ aggregate() (§3.5), same numbers as the pulse
+                                     ├─ GET /api/pulse ──▶ runs/<id>/ artifacts → build_context (§3.8)
+                                     ├─ POST /api/jobs ──▶ subprocess: pulse run --week W … (fixed argv table)
+                                     └─ /  ──▶ web/index.html + app.js (Stitch export, no build)
+```
+
+**Page:** one page, two tabs, sharing a sticky filter bar.
+- **Analyse:**
+  - Summary cards: total, average rating, % 1–2★, change vs the previous period.
+  - Theme breakdown with sentiment and trend.
+  - Weekly trend.
+  - Rating distribution per store.
+  - A paginated, sortable review list with CSV export.
+  - A data-quality note.
+- **Weekly pulse:**
+  - The pulse as a document card, with word count and V1–V7 ticks.
+  - Generate (a dry run), Publish to Docs and Create Gmail draft.
+
+**Filters** (all from `Review` and `Classification` fields, §7):
+- Date range (IST), store, rating, theme (incl. `unthemed`) and sentiment
+- Language, app version and keyword
+- Hide duplicates; include reviews excluded from themes
+
+**Rules:**
+- **The server writes nothing.** The database opens read-only, a missing database shows "run `pulse ingest` first", and pipeline runs go through the CLI, so DEL-11, OPS-4 and the MCP allowlist still hold.
+- **Same numbers as the pulse.** Theme statistics come from `aggregate()`. With default filters they equal `aggregates.json` (E-WEB-1). The theme breakdown ignores the theme filter, so every theme stays visible.
+- **Basis:** eligible reviews by default (the theme basis, §3.5). "Include excluded" adds short and unsupported-language reviews to the summary, trend, ratings and list.
+- **Local-only security:**
+  - Loopback bind, plus a `Host` check (DNS rebinding).
+  - Every POST needs the header `X-Pulse-Client: dashboard` and a same-origin `Origin` (CSRF).
+  - No CORS.
+  - A CSP that allows `'self'` plus the pinned CDN hosts.
+  - All data is inserted with `textContent`.
+- **Delivery buttons** follow the mapped MCP operations. With the user's append-only hosted server (Task 5.4), Publish appends once per week and Draft is disabled ("no Gmail draft tool").
+
+**Stitch prompt** (the design the user is building, 2026-10-22). It specifies the two tabs, the filter bar above, light theme, one green accent, Inter font, no avatars or reviewer details, and the empty, no-results and budget-used-up states. The exported HTML lands in `web/index.html` (Task 7.4).
