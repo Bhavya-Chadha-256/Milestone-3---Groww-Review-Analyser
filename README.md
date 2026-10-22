@@ -24,24 +24,49 @@ The repository holds everything except review data and secrets.
    uv run pulse ingest               # writes data/pulse.db and runs/<id>/report.md
    ```
 
-## Weekly run (Phase 3 onward)
+## Weekly run
 
 ```bash
-uv run pulse run --week 2026-W42 --until aggregate   # themes for the week (needs GROQ_API_KEY in .env)
+uv run pulse doctor                       # config, Groq key + models, MCP server + tools: all must print OK
+uv run pulse run --week 2026-W42          # ingest → themes → quotes → compose → validate → Doc → Gmail draft
+uv run pulse run --week 2026-W42 --dry-run   # stop after validate: writes runs/<id>/pulse.md, publishes nothing
 ```
 
-The free Groq tier allows about 200K tokens a day. A first run classifies the whole 12-week window, takes about three days, and stops cleanly each day with `daily_token_budget`. Each following day, continue with `uv run pulse run --week 2026-W42 --from classify --until aggregate`. Later weekly runs fit in one day. Results are in `runs/<run_id>/report.md`.
+Nothing is ever sent: the run creates or updates one Google Doc per ISO week and one Gmail **draft** to `delivery.recipient`. Results and every artifact are in `runs/<run_id>/` (`report.md` first).
+
+**Resuming.** A run that stops can continue from the stage named in `report.md`:
+
+| Report says | Run |
+|---|---|
+| `daily_token_budget: … --from classify` (the free Groq tier allows about 200K tokens a day; a first run classifies 12 weeks and takes about three days) | the printed command after 00:00 UTC, e.g. `uv run pulse run --week 2026-W42 --from classify --until aggregate` |
+| `MCP tool call failed: … --from publish` (often expired Google auth) | re-authorise the MCP server (below), then `uv run pulse run --week 2026-W42 --from publish` |
+| status `PUBLISHED_DOC_ONLY` (the draft failed) | `uv run pulse run --week 2026-W42 --from draft` |
+| `VALIDATION_FAILED` | read the **Validation** section; nothing was published |
+
+**Evals.** `uv run pulse eval --suite deterministic` is free and runs on every commit. `--suite pulses` and `--suite classification` spend Groq tokens; run them on a day with no backfill.
+
+## Delivery setup (Google Docs and Gmail through MCP)
+
+Google is reached only through a Google Workspace MCP server, [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp), which `pulse` starts locally (`uvx workspace-mcp --single-user --tools docs gmail`, from `config/mcp.yaml`). The server runs Google's OAuth flow and keeps the tokens; this project never holds Google credentials.
+
+1. **Google Cloud OAuth client.** In Google Cloud Console, create a project, enable the **Google Docs**, **Google Drive** and **Gmail** APIs, configure the OAuth consent screen (External, add yourself as a test user), and create an **OAuth client ID** of type **Desktop app**.
+2. **`.env`:** set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` (the account that owns the Doc and the draft).
+3. **`config/pulse.yaml`:** set `delivery.recipient` and `delivery.drive_folder_id` (the ID at the end of the Drive folder's URL).
+4. **Authorise once:** the first time the server needs Google, it opens a browser consent page; approve it. When the auth later expires, the run report says so and names the `--from` command.
+5. **Map the tools:** fill the `<placeholders>` in `config/mcp.yaml` with the server's tool and argument names, then run `uv run pulse doctor` until every line says `OK`. Tools that send, share or delete are refused by design.
+
+**Mode B (no MCP server):** run `uv run pulse run --week <week> --dry-run`, then ask a Claude Code session with the claude.ai Google Drive and Gmail connectors to publish `runs/<run_id>/pulse.md` as a Doc and create the draft.
 
 ## Where things live
 
 | Path | In git? | What it is |
 |---|---|---|
-| `src/pulse/`, `tests/`, `config/` | yes | code, tests and settings (`config/pulse.yaml`) |
+| `src/pulse/`, `tests/`, `config/` | yes | code, tests and settings (`config/pulse.yaml`, `config/mcp.yaml`) |
 | `.env.example` | yes | template listing the secrets the project needs |
 | `.env` | **no** | your secrets |
 | `data/raw/*.csv` | **no** | raw review exports from `pulse fetch` |
 | `data/pulse.db` | **no** | scrubbed, normalised reviews (SQLite), rebuilt by `pulse ingest` |
-| `runs/<run_id>/` | **no** | per-run `report.md`, `report.json`, `manifest.json`, `taxonomy.json`, `aggregates.json` |
+| `runs/<run_id>/` | **no** | per-run `report.md`, `report.json`, `manifest.json`, `taxonomy.json`, `aggregates.json`, `quotes.json`, `pulse_draft.json`, `pulse.md`, `validation.json`, `delivery.json` |
 | `evals/gold/*.csv` | **no** | the human-labelled gold set (real, scrubbed review text); back it up privately |
 | `evals/gold/*.meta.json` | yes | gold-set metadata (taxonomy version, κ, annotators) |
 

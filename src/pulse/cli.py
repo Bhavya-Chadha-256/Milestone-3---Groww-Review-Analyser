@@ -1,5 +1,7 @@
-"""`pulse` command-line interface: `fetch`, `raw status` (Phase 1), `run` and `ingest` (Phase 2)."""
+"""`pulse` command-line interface: `fetch`, `raw status`, `run`, `ingest`, `eval` and `doctor`."""
 
+import functools
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +13,7 @@ from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
+from pulse.deliver.mcp_client import gateway_problem, load_mcp_config, open_gateway
 from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
@@ -36,6 +39,8 @@ from pulse.timeutil import resolve_window, today_in_tz, window_bounds_utc
 
 DEFAULT_CONFIG = Path("config/pulse.yaml")
 ENV_FILE = Path(".env")
+MCP_CONFIG = Path("config/mcp.yaml")
+PLACEHOLDER = re.compile(r"^<.*>$")
 EXIT_REFUSED = 2
 SUITES = ("deterministic", "classification", "pulses")
 EXIT_RUN_IN_PROGRESS = 3
@@ -179,15 +184,66 @@ class Deps:
     gateway_factory: Any = None
 
 
-def build_dependencies(settings: Settings, *, need_llm: bool = False) -> Deps:
-    """The store and file source, plus the Groq client when a run reaches an LLM stage (MCP: Phase 5)."""
+def build_dependencies(settings: Settings, *, need_llm: bool = False, need_gateway: bool = False) -> Deps:
+    """The store and file source, the Groq client when a run reaches an LLM stage, and the MCP gateway
+    factory when it reaches `publish` and config/mcp.yaml exists."""
     paths = settings.paths
     sources: list[ReviewSource] = []
     if settings.sources.file.enabled:
         sources.append(FileImportSource(Path(paths.raw), Path(paths.mappings)))
     store = Store(Path(paths.db))
     llm = GroqLLM(settings.llm, store) if need_llm else None  # raises LLMError when the key is missing
-    return Deps(store=store, sources=sources, llm=llm)
+    factory = None
+    if need_gateway and MCP_CONFIG.is_file():
+        factory = functools.partial(open_gateway, load_mcp_config(MCP_CONFIG))
+    return Deps(store=store, sources=sources, llm=llm, gateway_factory=factory)
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    name: str
+    ok: bool
+    detail: str
+
+
+def doctor_checks(settings: Settings, deps: Deps) -> list[CheckResult]:
+    """Everything a delivering run needs, checked without spending tokens (DEL-10, LLM-14, OPS-10)."""
+    return [
+        CheckResult("config", True, "config/pulse.yaml loads"),
+        _delivery_check(settings),
+        _groq_check(settings, deps.llm),
+        _mcp_check(deps.gateway_factory),
+    ]
+
+
+def _delivery_check(settings: Settings) -> CheckResult:
+    delivery = settings.delivery
+    unset = [name for name in ("recipient", "drive_folder_id") if PLACEHOLDER.match(getattr(delivery, name))]
+    if unset:
+        return CheckResult(
+            "delivery_config", False, f"still a <placeholder> in config/pulse.yaml: {', '.join(unset)}"
+        )
+    return CheckResult("delivery_config", True, f"draft to {delivery.recipient}")
+
+
+def _groq_check(settings: Settings, llm: Any) -> CheckResult:
+    if llm is None:
+        return CheckResult("groq_auth", False, f"{settings.llm.api_key_env} is not set; add it to .env")
+    try:
+        available = {model.id for model in llm.client.models.list().data}
+    except Exception as error:  # a bad key or no network; the key itself is never printed
+        return CheckResult("groq_auth", False, f"Groq refused the model list ({type(error).__name__})")
+    missing = [model for model in (settings.llm.model, settings.judge_model) if model not in available]
+    if missing:
+        return CheckResult("groq_auth", False, f"models not available to this key: {', '.join(missing)}")
+    return CheckResult("groq_auth", True, f"{settings.llm.model} and {settings.judge_model} available")
+
+
+def _mcp_check(factory: Any) -> CheckResult:
+    if factory is None:
+        return CheckResult("mcp_tools", False, f"{MCP_CONFIG} not found")
+    problem = gateway_problem(factory)
+    return CheckResult("mcp_tools", problem is None, problem or "server reachable; every mapped tool exists")
 
 
 @app.command("run")
@@ -242,7 +298,11 @@ def _execute(  # craftsman-ignore: WARN-PY001 (keyword flags forwarded from the 
         **flags,
     )
     try:
-        deps = build_dependencies(settings, need_llm=STAGES.index(until_stage) >= STAGES.index("discover"))
+        deps = build_dependencies(
+            settings,
+            need_llm=STAGES.index(until_stage) >= STAGES.index("discover"),
+            need_gateway=STAGES.index(until_stage) >= STAGES.index("publish"),
+        )
     except LLMError as error:  # OPS-10
         typer.echo(str(error))
         raise typer.Exit(EXIT_REFUSED) from error
@@ -319,3 +379,18 @@ def _run_suite(settings: Settings, suite: str, dataset: str, gold: Path) -> Path
     return run_classification_suite(
         settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
     )
+
+
+@app.command("doctor")
+def doctor_command(ctx: typer.Context) -> None:
+    """Check config, the Groq key and models, and the Workspace MCP server before a delivering run."""
+    settings = _settings(ctx)
+    try:
+        deps = build_dependencies(settings, need_llm=True, need_gateway=True)
+    except LLMError:
+        deps = build_dependencies(settings, need_gateway=True)  # the groq_auth check reports the missing key
+    checks = doctor_checks(settings, deps)
+    for check in checks:
+        typer.echo(f"{check.name} {'OK' if check.ok else 'FAIL'}  {check.detail}")
+    if not all(check.ok for check in checks):
+        raise typer.Exit(1)

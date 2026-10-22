@@ -11,12 +11,13 @@ import os
 import re
 import string
 import time
-from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import anyio
 import yaml
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters, get_default_environment
@@ -125,6 +126,48 @@ class WorkspaceGateway:
 async def open_gateway(cfg: McpConfig) -> AsyncIterator[WorkspaceGateway]:
     async with Client(_server_target(cfg.server)) as client:
         yield WorkspaceGateway(client, cfg)
+
+
+def gateway_problem(factory: Callable[[], AbstractAsyncContextManager[WorkspaceGateway]]) -> str | None:
+    """Why the MCP server can't be used, or None: the pre-check before any LLM spend (DEL-1) and doctor."""
+
+    async def check() -> None:
+        async with factory() as gateway:
+            await gateway.check_tools()
+
+    try:
+        _run(check)
+    except (MissingTool, ForbiddenTool) as error:
+        return str(error)
+    except Exception as error:  # an unreachable server can fail in many ways; report, don't crash
+        return f"cannot reach the MCP server ({type(error).__name__}: {error})"
+    return None
+
+
+def run_with_gateway(
+    factory: Callable[[], AbstractAsyncContextManager[WorkspaceGateway]],
+    operation: Callable[[WorkspaceGateway], Awaitable[Any]],
+) -> Any:
+    """Run one async delivery operation from synchronous pipeline code."""
+
+    async def run() -> Any:
+        async with factory() as gateway:
+            return await operation(gateway)
+
+    return _run(run)
+
+
+def _run(function: Callable[[], Awaitable[Any]]) -> Any:
+    """`anyio.run`, re-raising the first real error instead of the client's task-group wrapper."""
+    try:
+        return anyio.run(function)
+    except BaseExceptionGroup as group:
+        raise _first(group) from group
+
+
+def _first(group: BaseExceptionGroup) -> BaseException:
+    found = group.exceptions[0]
+    return _first(found) if isinstance(found, BaseExceptionGroup) else found
 
 
 def _server_target(server: ServerSpec) -> StdioServerParameters | str:

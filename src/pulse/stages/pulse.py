@@ -14,7 +14,7 @@ from pulse.llm.quotes import QuoteUnavailable, candidate_pool, select_quotes
 from pulse.llm.schema import DailyBudgetExhausted, LLMRefusal, LLMSchemaError, LLMTruncated, RequestTooLarge
 from pulse.models import Quote, RunStatus
 from pulse.pipeline import RunContext, register_stage
-from pulse.report.render import build_context, render_markdown
+from pulse.report.render import PulseContext, build_context, render_markdown
 from pulse.report.validate import ValidationReport, route, validate
 from pulse.stages.themes import budget_failure, eligible_reviews, stage_labels, stage_llm, stage_taxonomy
 
@@ -158,9 +158,16 @@ def _compose_failure(context: RunContext, error: ComposeFailed) -> RunStatus:
     return RunStatus.VALIDATION_FAILED
 
 
+def pulse_context(context: RunContext) -> PulseContext:
+    """The pulse as rendered, rebuilt from saved artifacts when resumed (used by delivery, Phase 5)."""
+    return build_context(
+        _aggregates(context), _top(context), _draft(context), _quotes(context), stage_taxonomy(context)
+    )
+
+
 def _check(context: RunContext) -> ValidationReport:
     taxonomy, top = stage_taxonomy(context), _top(context)
-    ctx = build_context(_aggregates(context), top, _draft(context), _quotes(context), taxonomy)
+    ctx = pulse_context(context)
     markdown = render_markdown(ctx)
     reviews = {review.review_id: review for review in eligible_reviews(context)}
     report = validate(

@@ -30,3 +30,11 @@ def test_env_example_lists_keys_and_env_is_git_ignored() -> None:
     assert "GROQ_API_KEY=gsk_" not in example  # the template never carries a real key
     ignored = subprocess.run(["git", "check-ignore", "-q", ".env"], cwd=REPO, check=False)
     assert ignored.returncode == 0
+
+
+def test_env_example_lists_every_mcp_server_variable() -> None:  # CLAUDE.md: every name, empty value
+    from pulse.deliver.mcp_client import load_mcp_config
+
+    lines = (REPO / ".env.example").read_text().splitlines()
+    for name in load_mcp_config(REPO / "config" / "mcp.yaml").server.env:
+        assert f"{name}=" in lines, name

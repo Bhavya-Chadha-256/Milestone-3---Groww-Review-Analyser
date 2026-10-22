@@ -1,7 +1,8 @@
 """Shared pytest fixtures for every task (implementation.md Task 0.2)."""
 
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -79,3 +80,22 @@ async def client(stub_config: McpConfig) -> AsyncIterator[Client]:
 @pytest.fixture
 def gateway(client: Client, stub_config: McpConfig) -> WorkspaceGateway:
     return WorkspaceGateway(client, stub_config)
+
+
+GatewayFactory = Callable[[], AbstractAsyncContextManager[WorkspaceGateway]]
+
+
+def stub_factory(config: McpConfig) -> GatewayFactory:
+    """What `build_dependencies` provides for a real server, but connected to the in-process stub."""
+
+    @asynccontextmanager
+    async def connect() -> AsyncIterator[WorkspaceGateway]:
+        async with Client(stub_mcp.server) as connected:
+            yield WorkspaceGateway(connected, config)
+
+    return connect
+
+
+@pytest.fixture
+def gateway_factory(stub_config: McpConfig) -> GatewayFactory:
+    return stub_factory(stub_config)

@@ -25,7 +25,7 @@ Update this table whenever a task or phase changes state.
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
 | 3. Themes | 🚧 Code complete (2026-10-22): Tasks 3.1–3.6 plus the final-review fix pass. **Backfill running in the background**: 800/2,177 classified on day 1; daily resumes after 00:00 UTC (scheduled in the Claude session, newest reviews first). **Gold set waiting on human annotators** (none available yet; user chose to build on). | `phase-3-themes` (on GitHub; later commits local) | Groq free tier; taxonomy v1, 5 themes. |
 | 4. Pulse | 🚧 Code complete (2026-10-22): Tasks 4.1–4.5, reviewed ("with fixes", all Important fixed; 410 tests). Checkpoint pending: live `--dry-run` on W42 (after the backfill labels last week) and the paid pulses suite (a non-backfill day). | `phase-4-pulse` (local) | Branches from `phase-3-themes`. |
-| 5. Delivery | 🚧 In progress (2026-10-22): Tasks 5.1–5.2 built against the in-process stub server; 5.3 next. The real server (workspace-mcp) needs the user's Google OAuth client. | `phase-5-deliver` (local) | Self-hosted Workspace MCP server; drafts to bhavyachadha256@gmail.com. |
+| 5. Delivery | 🚧 Code complete (2026-10-22): Tasks 5.1–5.3 built and tested against the in-process stub server (437 tests). Not yet reviewed. Checkpoint (manual end-to-end) waits on the user's Google OAuth client, Drive folder and the real tool names in `config/mcp.yaml`. | `phase-5-deliver` (local) | Self-hosted workspace-mcp; drafts to bhavyachadha256@gmail.com. Work paused here at the user's request (2026-10-22). |
 | 6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-22 evening, Phases 3–5 in flight)
@@ -35,7 +35,7 @@ Update this table whenever a task or phase changes state.
   - `main` = GitHub `origin/main` (`9da3352`): Phases 0–2. `archive/full-history` holds the pre-publication history: **never push it.**
   - `phase-3-themes`: Phase 3 code plus its fix pass. On GitHub up to `66c67b3`; the fix-pass commits are local.
   - `phase-4-pulse`: Phase 4 (quotes, compose, render, V1–V7, pulse stages, evals) plus its fix pass. Local.
-  - `phase-5-deliver`: Tasks 5.1 (MCP gateway) and 5.2 (Doc + draft) built against `tests/stub_mcp.py`. Local; rebase it onto `phase-4-pulse` after Phase 4 fixes.
+  - `phase-5-deliver`: Tasks 5.1 (MCP gateway), 5.2 (Doc + draft) and 5.3 (delivery stages, pre-check, `pulse doctor`, README) built against `tests/stub_mcp.py`; rebased on `phase-4-pulse` after its fix pass. Local.
 - **Backfill (Phase 3):** run `2026-W42-20261022T090923`, 800 of 2,177 eligible reviews classified on day 1 (oldest first, 27 Jul – 26 Aug). Pending reviews now go **newest first**, so the next day labels the most recent ~1,000 (enough for a real "last week" pulse). Resume daily after 00:00 UTC: `uv run pulse run --week 2026-W42 --from classify --until aggregate`. In the original session this is scheduled (05:37 and 17:47 IST, session-only jobs that need the laptop awake and VS Code open); a new session must schedule or run it by hand.
 - **Groq:** key in `.env` (git-ignored), verified 2026-10-22: both models available.
 - **Delivery decisions (user, 2026-10-22):** self-hosted Google Workspace MCP server, chosen as `workspace-mcp` (`uvx workspace-mcp --single-user --tools docs gmail`); drafts addressed to `bhavyachadha256@gmail.com`. Tool names in `config/mcp.yaml` stay placeholders until the authorised server lists them.
@@ -43,7 +43,7 @@ Update this table whenever a task or phase changes state.
 
 **Next steps (in order)**
 1. **Each day after 00:00 UTC:** resume the backfill until `AGGREGATED` (about 2 more days). Check `report.md` → Top themes: 3–5 themes, names ≤ 4 words, `actionable_unthemed_share` ≤ 0.20, no `broad_theme:` warning.
-2. **Finish Task 5.3** (delivery stages, `pulse doctor`, README) on `phase-5-deliver`, against the stub.
+2. **Phase 5 review:** one fresh-context review of `phase-5-deliver` (Tasks 5.1–5.3), then its fix pass. Work paused before this at the user's request.
 3. **Phase 4 checkpoint:** once last week is labelled, `uv run pulse run --week 2026-W42 --dry-run` and read `pulse.md` in full (find each quote in the source, check for PII). On a day with no backfill, `uv run pulse eval --suite pulses`.
 4. **Google setup (user):** create a Google Cloud OAuth client (Desktop app) with the Docs, Drive and Gmail APIs enabled; put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` in `.env`; create a Drive folder and set `delivery.drive_folder_id`; authorise workspace-mcp once. Then fill `config/mcp.yaml` from the server's tool list and run `pulse doctor` (Phase 5 checkpoint).
 5. **Gold set (needs two human annotators):** `pulse eval --export-gold 200`, label, κ ≥ 0.70, then `pulse eval --suite classification`. Until then Phase 3's checkpoint stays open.
@@ -2431,7 +2431,7 @@ Expected: all passed.
 *README*
 - uv setup, `.env` with `GROQ_API_KEY`, authorising the Workspace MCP server through its own flow, `pulse doctor`, the weekly command, the resume commands, and **Mode B** (`--dry-run` plus Claude Code connectors).
 
-- [ ] **Step 1: Write the failing tests** (`FakeLLM`, the fixture export and the stub gateway)
+- [x] **Step 1: Write the failing tests** (`FakeLLM`, the fixture export and the stub gateway)
 
 ```python
 def test_full_run_delivers(...): ...                     # DELIVERED; 1 doc, 1 draft; draft body contains doc URL; all artifacts
@@ -2445,21 +2445,31 @@ def test_doctor_fails_without_groq_key(...): ...       # OPS-10, LLM-14: no key,
 def test_doctor_all_ok_with_stub(...): ...
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_pipeline_deliver.py tests/test_doctor.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `stages/deliver.py`, the pre-check, `doctor` and `README.md`**
+- [x] **Step 3: Implement `stages/deliver.py`, the pre-check, `doctor` and `README.md`**
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest -v`
 Expected: all passed. This also meets E-DEL-1.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: deliver via MCP with pre-check, resume and doctor"`
+
+> **As built (2026-10-22):**
+> - **Doc body:** the plain-text render (`render_text`), not Markdown: a Google Doc shows `#`, `**` and `>` literally, and the Markdown render escapes quote characters, so read-back would never match the verbatim quotes in `must_contain`.
+> - **Safety:** `publish` refuses (status `VALIDATION_FAILED`, no tool call) unless the saved `validation.json` passed, so `--from publish` can't deliver a pulse that failed its gates. `draft` refuses without a Doc for the week.
+> - **Statuses:** `publish` returns `PUBLISHED_DOC_ONLY`; `draft` returns `DELIVERED` or `DELIVERY_UNVERIFIED`; a draft tool failure keeps `PUBLISHED_DOC_ONLY` with `--from draft` in the report (DEL-8); a publish tool failure is `FAILED` with `--from publish` (DEL-4). Each writes `delivery.json` and a **Delivery** report section.
+> - **Sync/async:** stages are synchronous; `run_with_gateway` and `gateway_problem` (in `mcp_client.py`) run the async gateway with `anyio.run` and unwrap the client's task-group `ExceptionGroup`, so `ToolCallFailed` and `MissingTool` keep their messages.
+> - **Pre-check:** in `_run_stages`, before any stage, when the range includes `publish` and a `gateway_factory` is set; a failure records `mcp_precheck_failed` and the reason (DEL-1).
+> - **CLI:** `build_dependencies(..., need_gateway=...)` builds `functools.partial(open_gateway, load_mcp_config("config/mcp.yaml"))` for runs reaching `publish`; `pulse doctor` prints `config`, `delivery_config`, `groq_auth` and `mcp_tools` as `OK`/`FAIL` and exits 1 on any failure. Without a key, doctor still runs and reports `groq_auth FAIL`.
+> - **`.env.example`** lists `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` (empty), the names `config/mcp.yaml` passes to the server.
+> - **Extra tests:** `test_publish_refuses_a_pulse_that_failed_validation`, `test_doctor_fails_when_a_model_is_missing`, `test_env_example_lists_every_mcp_server_variable`.
 
 ### Phase 5 checkpoint (manual end-to-end, E-DEL-2)
 

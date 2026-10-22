@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from pulse.config import Settings
+from pulse.deliver.mcp_client import gateway_problem
 from pulse.ingest.base import ReviewSource
 from pulse.models import RunStatus
 from pulse.report.run_report import RunReport
@@ -24,7 +25,7 @@ from pulse.timeutil import Window, resolve_window, window_for_week
 
 STAGES = ("ingest", "discover", "classify", "aggregate", "quotes", "compose", "validate", "publish", "draft")
 STOPPING_STATUSES = frozenset({RunStatus.FAILED, RunStatus.INSUFFICIENT_DATA, RunStatus.VALIDATION_FAILED})
-STAGE_MODULES = ("pulse.stages.ingest", "pulse.stages.themes", "pulse.stages.pulse")
+STAGE_MODULES = ("pulse.stages.ingest", "pulse.stages.themes", "pulse.stages.pulse", "pulse.stages.deliver")
 
 
 class MissingArtifact(Exception):
@@ -198,6 +199,8 @@ def _run_id_for(settings: Settings, opts: RunOptions, store: Store, window: Wind
 def _run_stages(context: RunContext, stages: list[str]) -> RunStatus:
     status = RunStatus.FAILED
     try:
+        if not _mcp_ready(context, stages):
+            return status
         for stage in stages:
             context.stage = stage
             status = _run_stage(context, stage, status)
@@ -211,6 +214,20 @@ def _run_stages(context: RunContext, stages: list[str]) -> RunStatus:
         context.report.save_state(context.run_dir / "report.json")
         context.store.set_run_status(context.run_id, status, **context.report.counts)
     return status
+
+
+def _mcp_ready(context: RunContext, stages: list[str]) -> bool:
+    """A run that will publish checks the MCP server and its tools first, before any LLM spend (DEL-1)."""
+    if "publish" not in stages or context.gateway_factory is None:
+        return True
+    problem = gateway_problem(context.gateway_factory)
+    if problem is None:
+        return True
+    context.report.warnings.append("mcp_precheck_failed")
+    context.report.sections["Delivery"] = (
+        f"MCP pre-check failed before any LLM call: {problem}. Run pulse doctor."
+    )
+    return False
 
 
 def _run_stage(context: RunContext, stage: str, status: RunStatus) -> RunStatus:
