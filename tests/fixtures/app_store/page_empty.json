@@ -1,0 +1,18 @@
+{
+ "feed": {
+  "author": {
+   "name": {
+    "label": "iTunes Store"
+   },
+   "uri": {
+    "label": "http://www.apple.com/in/itunes/"
+   }
+  },
+  "updated": {
+   "label": "2026-10-21T00:00:00-07:00"
+  },
+  "id": {
+   "label": "https://itunes.apple.com/in/rss/customerreviews/page=1/id=1404871703/sortby=mostrecent/json"
+  }
+ }
+}

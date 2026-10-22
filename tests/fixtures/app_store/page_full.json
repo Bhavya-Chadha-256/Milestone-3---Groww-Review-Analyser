@@ -1,0 +1,131 @@
+{
+ "feed": {
+  "author": {
+   "name": {
+    "label": "iTunes Store"
+   },
+   "uri": {
+    "label": "http://www.apple.com/in/itunes/"
+   }
+  },
+  "updated": {
+   "label": "2026-10-21T00:00:00-07:00"
+  },
+  "id": {
+   "label": "https://itunes.apple.com/in/rss/customerreviews/page=1/id=1404871703/sortby=mostrecent/json"
+  },
+  "entry": [
+   {
+    "author": {
+     "uri": {
+      "label": "https://itunes.apple.com/in/reviews/idREDACTED"
+     },
+     "name": {
+      "label": "REDACTED"
+     },
+     "label": ""
+    },
+    "updated": {
+     "label": "2026-10-14T10:00:00-07:00"
+    },
+    "im:rating": {
+     "label": "5"
+    },
+    "im:version": {
+     "label": "18.22.0"
+    },
+    "id": {
+     "label": "9001"
+    },
+    "title": {
+     "label": "Easy SIPs"
+    },
+    "content": {
+     "label": "Starting a SIP took two minutes.",
+     "attributes": {
+      "type": "text"
+     }
+    },
+    "link": {
+     "attributes": {
+      "rel": "related",
+      "href": "https://itunes.apple.com/in/review?id=1404871703&type=Purple%20Software"
+     }
+    },
+    "im:voteSum": {
+     "label": "0"
+    },
+    "im:contentType": {
+     "attributes": {
+      "term": "Application",
+      "label": "Application"
+     }
+    },
+    "im:voteCount": {
+     "label": "0"
+    }
+   },
+   {
+    "author": {
+     "uri": {
+      "label": "https://itunes.apple.com/in/reviews/idREDACTED"
+     },
+     "name": {
+      "label": "REDACTED"
+     },
+     "label": ""
+    },
+    "updated": {
+     "label": "2026-10-10T08:00:00-07:00"
+    },
+    "im:rating": {
+     "label": "2"
+    },
+    "im:version": {
+     "label": "18.22.0"
+    },
+    "id": {
+     "label": "9002"
+    },
+    "title": {
+     "label": "Withdrawal slow"
+    },
+    "content": {
+     "label": "Withdrawal pending for three days.",
+     "attributes": {
+      "type": "text"
+     }
+    },
+    "link": {
+     "attributes": {
+      "rel": "related",
+      "href": "https://itunes.apple.com/in/review?id=1404871703&type=Purple%20Software"
+     }
+    },
+    "im:voteSum": {
+     "label": "0"
+    },
+    "im:contentType": {
+     "attributes": {
+      "term": "Application",
+      "label": "Application"
+     }
+    },
+    "im:voteCount": {
+     "label": "0"
+    }
+   },
+   {
+    "im:name": {
+     "label": "Groww Stocks, Mutual Fund, IPO"
+    },
+    "id": {
+     "label": "https://apps.apple.com/in/app/id1404871703"
+    },
+    "updated": {
+     "label": "2026-10-20T00:00:00-07:00"
+    }
+   }
+  ]
+ }
+}

@@ -1,0 +1,10 @@
+﻿id,userName,userImage,title,text,rating,date,version
+r1,Rahul Sharma,https://img.example/rahul.png,,"Withdrawal stuck for 3 days, support not replying",1,2026-10-14 10:00:00,18.22.0
+r2,,,,"Great app
+but KYC took a week",4 stars,2026-10-01 09:00:00,
+r3,,,,my PAN ABCDE1234F got rejected,2,2026-09-20 12:00:00,18.20.1
+r4,,,,Rating column is not a number here,abc,2026-10-02 09:00:00,
+r5,,,,   ,5,2026-10-03 09:00:00,
+r6,,,,An old review from the start of the year,3,2026-01-01 00:00:00,
+r7,,,,Charts are slow during market open,3.0,2026-10-15 03:00:00,18.22.0
+r8,,,,The date on this row cannot be parsed,3,not-a-date,

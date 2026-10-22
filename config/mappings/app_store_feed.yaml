@@ -1,0 +1,10 @@
+# Reads raw exports written by `pulse fetch app-store` (src/pulse/acquire/raw_export.py).
+source: app_store
+columns:
+  native_id: native_id
+  rating: rating
+  title: title
+  text: text
+  posted_at: posted_at
+  app_version: app_version
+date_timezone: UTC

@@ -1,0 +1,26 @@
+id,title,text,rating,date,version,seeded_pii,negative
+pii01,,Please contact me at rahul.sharma@gmail.com about my stuck withdrawal request,2,2026-10-06 10:00:00,18.22.0,rahul.sharma@gmail.com,false
+pii02,,My registered number is 9876543210 and nobody from support has called back,2,2026-10-07 10:00:00,18.22.0,9876543210,false
+pii03,,Call me on +91 98123 45678 because the KYC verification keeps failing,2,2026-10-08 10:00:00,18.22.0,98123 45678|9812345678,false
+pii04,,My PAN ABCPD1234K was rejected three times during account opening today,2,2026-10-09 10:00:00,18.22.0,ABCPD1234K,false
+pii05,,Aadhaar 4567 8912 3456 is linked but e-sign still fails every single time,2,2026-10-10 10:00:00,18.22.0,4567 8912 3456,false
+pii06,,I sent money from priya.k@okhdfcbank and it never reached my account,2,2026-10-11 10:00:00,18.22.0,priya.k@okhdfcbank,false
+pii07,,My bank IFSC is SBIN0004567 and the mandate registration keeps failing,2,2026-10-12 10:00:00,18.22.0,SBIN0004567,false
+pii08,,Account number 123456789012 shows the refund but the app says it was sent,2,2026-10-13 10:00:00,18.22.0,123456789012,false
+pii09,,Write to amit.verma [at] yahoo [dot] com for the statement issue please,2,2026-10-05 10:00:00,18.22.0,amit.verma|yahoo [dot] com,false
+pii10,,See my complaint screenshot here https://imgur.com/a/xyz123 for the failed order,2,2026-10-06 10:00:00,18.22.0,imgur.com/a/xyz123,false
+pii11,,My alternate number is 7012345678 please call between ten and six,2,2026-10-07 10:00:00,18.22.0,7012345678,false
+pii12,,Email me at neha_s+groww@outlook.in since the app support chat is useless,2,2026-10-08 10:00:00,18.22.0,neha_s+groww@outlook.in,false
+pii13,,PAN ABCDE 1234 F shows invalid even though it is printed on my card,2,2026-10-09 10:00:00,18.22.0,ABCDE 1234 F,false
+pii14,,UPI id ravi99@ybl got debited twice for the same mutual fund order,2,2026-10-10 10:00:00,18.22.0,ravi99@ybl,false
+pii15,,Refund went to account 98765432101234 which is not even my bank account,2,2026-10-11 10:00:00,18.22.0,98765432101234,false
+pii16,,"Lost ₹1,00,000 in F&O trading because the app froze at market open",2,2026-10-12 10:00:00,18.22.0,,true
+pii17,,Rs 50000 has been stuck in my wallet since Monday with no update,2,2026-10-13 10:00:00,18.22.0,,true
+pii18,,₹ 250000000 withdrawal pending is what the screen showed which is clearly wrong,2,2026-10-05 10:00:00,18.22.0,,true
+pii19,,"INR 1234567890 debited according to the alert, please check this urgently",2,2026-10-06 10:00:00,18.22.0,,true
+pii20,,"I was at home, dot the i's and still the form would not submit",2,2026-10-07 10:00:00,18.22.0,,true
+pii21,,Support never answers users 9876501234 is my number so please call soon,2,2026-10-12 10:00:00,18.22.0,9876501234,false
+pii22,,After waiting 2 hrs 9123456780 still shows as unverified in my profile,2,2026-10-12 10:00:00,18.22.0,9123456780,false
+pii23,,Pay me at kiran@ybl. The refund never arrived in my bank account,2,2026-10-12 10:00:00,18.22.0,kiran@ybl,false
+pii24,,My pan abcpe5678k was rejected even though the photo was clear,2,2026-10-12 10:00:00,18.22.0,abcpe5678k,false
+pii25,,Call 987-654-3210 because nobody replies to the support emails at all,2,2026-10-12 10:00:00,18.22.0,987-654-3210,false

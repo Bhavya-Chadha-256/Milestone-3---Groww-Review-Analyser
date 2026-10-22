@@ -1,0 +1,68 @@
+{
+ "feed": {
+  "author": {
+   "name": {
+    "label": "iTunes Store"
+   },
+   "uri": {
+    "label": "http://www.apple.com/in/itunes/"
+   }
+  },
+  "updated": {
+   "label": "2026-10-21T00:00:00-07:00"
+  },
+  "id": {
+   "label": "https://itunes.apple.com/in/rss/customerreviews/page=1/id=1404871703/sortby=mostrecent/json"
+  },
+  "entry": {
+   "author": {
+    "uri": {
+     "label": "https://itunes.apple.com/in/reviews/idREDACTED"
+    },
+    "name": {
+     "label": "REDACTED"
+    },
+    "label": ""
+   },
+   "updated": {
+    "label": "2026-09-15T12:00:00-07:00"
+   },
+   "im:rating": {
+    "label": "3"
+   },
+   "im:version": {
+    "label": "18.22.0"
+   },
+   "id": {
+    "label": "9005"
+   },
+   "title": {
+    "label": "Okay"
+   },
+   "content": {
+    "label": "KYC took a week but works.",
+    "attributes": {
+     "type": "text"
+    }
+   },
+   "link": {
+    "attributes": {
+     "rel": "related",
+     "href": "https://itunes.apple.com/in/review?id=1404871703&type=Purple%20Software"
+    }
+   },
+   "im:voteSum": {
+    "label": "0"
+   },
+   "im:contentType": {
+    "attributes": {
+     "term": "Application",
+     "label": "Application"
+    }
+   },
+   "im:voteCount": {
+    "label": "0"
+   }
+  }
+ }
+}

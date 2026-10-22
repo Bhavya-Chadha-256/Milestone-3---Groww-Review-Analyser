@@ -1,0 +1,48 @@
+[project]
+name = "pulse"
+version = "0.1.0"
+description = "Weekly pulse of public Groww app-store reviews, delivered to Google Docs and Gmail via MCP"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic",
+    "mcp",
+    "pydantic>=2",
+    "pyyaml",
+    "typer",
+    "jinja2",
+    "httpx",
+    "anyio",
+    "google-play-scraper>=1.2.7",
+    "python-dotenv>=1.2.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+eval = ["scikit-learn"]
+
+[project.scripts]
+pulse = "pulse.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pulse"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option", "typer.Argument"]  # typer's idiomatic defaults
+
+[tool.ruff.format]
+exclude = ["*.md"]  # the docs' code samples are illustrative; keep their alignment

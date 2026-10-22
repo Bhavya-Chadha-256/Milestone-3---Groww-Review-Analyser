@@ -1,0 +1,13 @@
+# Template for third-party Play Store review exports (e.g. an Appbot CSV export).
+# Save the export as data/raw/generic__<name>.csv (or .json), then edit the right-hand
+# column names below to match its header. title and app_version may be null.
+source: play_store
+columns:
+  native_id: id
+  rating: rating
+  title: title
+  text: text
+  posted_at: date
+  app_version: version
+date_format: null          # null = ISO 8601; otherwise a strptime pattern, e.g. "%d/%m/%Y %H:%M"
+date_timezone: Asia/Kolkata  # used for timestamps without an offset

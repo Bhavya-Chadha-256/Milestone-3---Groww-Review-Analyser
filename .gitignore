@@ -1,0 +1,14 @@
+# Local data: raw exports may contain PII until scrubbed
+data/
+runs/
+evals/results/
+
+# Secrets
+.env
+
+# Python tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,71 @@
+# All tunables for the Groww Weekly Review Pulse (architecture.md §10).
+product:
+  name: Groww
+  play_package: com.nextbillion.groww
+  app_store_id: "1404871703"          # verified via iTunes Search API, 2026-10-21
+  storefront: in
+window:
+  weeks: 12                              # 8–12
+  timezone: Asia/Kolkata
+sources:
+  file:       { enabled: true }
+  app_store:  { enabled: true }         # used by `pulse fetch app-store`
+  play_store: { enabled: true, max_reviews: 20000, lang: en }   # `pulse fetch play-store` (google-play-scraper, architecture §3.1)
+themes:
+  min: 3
+  max: 5
+  top_n: 3
+  name_max_words: 4
+  min_reviews: 100
+  discovery_sample: 400
+  rediscover_unthemed_threshold: 0.20
+  seed_hints: [onboarding, KYC, payments, statements, withdrawals]
+llm:
+  model: claude-opus-5-5
+  fallbacks: default
+  classify_chunk_size: 50
+  batch_threshold: 500
+  max_run_cost_usd: 15.0
+  stages:
+    discover: { effort: high,   max_tokens: 16000 }
+    classify: { effort: low,    max_tokens: 16000 }
+    quotes:   { effort: medium, max_tokens: 8000 }
+    compose:  { effort: high,   max_tokens: 16000 }
+    judge:    { effort: medium, max_tokens: 8000 }
+  pricing: { input: 4.00, output: 20.00, cache_read: 0.20, cache_write_multiplier: 1.25, batch_discount: 0.5 }
+pulse:
+  max_words: 250
+  quotes: 3
+  actions: 3
+  summary_max_words: 18
+  action_max_words: 20
+  quote_max_words: 30
+  rationale_max_words: 25
+  quote_min_words: 8
+  quote_pool_max_words: 60
+  quote_candidates: 30
+  evidence_per_theme: 20
+  retries: 2
+  min_theme_reviews: 10
+monitoring:
+  duplicate_share_warn: 0.10
+  volume_change_warn: 0.5
+  skipped_share_warn: 0.05
+  unclassified_warn: 0.01
+  cost_spike_factor: 2.0
+  retries_warn: 1
+evals:
+  judge_model: null                      # null = llm.model (same model as pipeline)
+  judge_majority_flip_rate: 0.05
+delivery:
+  drive_folder_id: <FOLDER_ID>
+  recipient: <self-or-alias@example.com>
+  doc_title: "Groww Review Pulse — {iso_week} ({range})"
+ingest:
+  min_words: 8                           # shorter reviews are stored but excluded from themes
+  languages: [en, hinglish]              # others (hi, other) are stored but excluded from themes
+privacy:
+  extra_patterns: []                     # Groww client-code / order-ID formats; fill before first real run
+retention:
+  raw_days: 14
+paths: { db: data/pulse.db, runs: runs, raw: data/raw, mappings: config/mappings }
