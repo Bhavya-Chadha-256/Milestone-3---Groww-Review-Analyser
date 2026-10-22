@@ -33,6 +33,9 @@ REVIEW_OUTPUT_TOKENS = 30  # one {k, theme_id, sentiment} item plus a share of r
 class ClassifyResult:
     classifications: dict[str, Classification] = field(default_factory=dict)
     unclassified: list[str] = field(default_factory=list)
+    failures: dict[str, str] = field(
+        default_factory=dict
+    )  # review_id → refused | truncated | schema | missing
     from_cache: int = 0
     sent: int = 0
     stopped_for_budget: bool = False
@@ -79,7 +82,8 @@ def classify_reviews(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hi
             break
         store.save_classifications(labels.values())
         result.classifications.update(labels)
-        result.unclassified += missing
+        result.unclassified += list(missing)
+        result.failures.update(missing)
         result.sent += len(chunk)
     return result
 
@@ -88,10 +92,10 @@ def classify_reviews(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hi
 class _Outcome:
     labels: dict[str, Classification] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)  # keys the model skipped: re-queued once (LLM-4)
-    failed: list[str] = field(default_factory=list)  # refused, truncated or invalid: not retried again
+    failed: dict[str, str] = field(default_factory=dict)  # refused, truncated or invalid: not retried again
 
     def __or__(self, other: "_Outcome") -> "_Outcome":
-        return _Outcome(self.labels | other.labels, self.missing + other.missing, self.failed + other.failed)
+        return _Outcome(self.labels | other.labels, self.missing + other.missing, self.failed | other.failed)
 
 
 class _ChunkClassifier:
@@ -104,7 +108,8 @@ class _ChunkClassifier:
         self.system = _system_prompt(taxonomy)
         self.prompt_version = prompt_version()
 
-    def classify(self, chunk: Sequence[Review]) -> tuple[dict[str, Classification], list[str]]:
+    def classify(self, chunk: Sequence[Review]) -> tuple[dict[str, Classification], dict[str, str]]:
+        """Labels by review ID, and the reviews left unlabelled with their failure class."""
         outcome = self._ask(chunk, refusal_split=True)
         if outcome.missing:
             skipped = set(outcome.missing)
@@ -112,9 +117,9 @@ class _ChunkClassifier:
                 [review for review in chunk if review.review_id in skipped], refusal_split=True
             )
             outcome = _Outcome(
-                outcome.labels | retried.labels, [], outcome.failed + retried.failed + retried.missing
+                outcome.labels | retried.labels, retried.missing, outcome.failed | retried.failed
             )
-        return outcome.labels, outcome.failed + outcome.missing
+        return outcome.labels, outcome.failed | dict.fromkeys(outcome.missing, "missing")
 
     def _ask(self, chunk: Sequence[Review], refusal_split: bool) -> _Outcome:
         payload, keys = reviews_json(chunk)
@@ -122,12 +127,12 @@ class _ChunkClassifier:
         try:
             output = self.llm.structured(LLMRequest("classify", self.system, user, self.schema))
         except (LLMTruncated, RequestTooLarge):  # LLM-2, LLM-12: halve until a single review still fails
-            return self._split(chunk, refusal_split) if len(chunk) > 1 else _Outcome(failed=_ids(chunk))
+            return self._split(chunk, refusal_split) if len(chunk) > 1 else _failed(chunk, "truncated")
         except LLMRefusal:  # LLM-1: one split retry, then give up on those reviews
             can_split = refusal_split and len(chunk) > 1
-            return self._split(chunk, refusal_split=False) if can_split else _Outcome(failed=_ids(chunk))
+            return self._split(chunk, refusal_split=False) if can_split else _failed(chunk, "refused")
         except LLMSchemaError:
-            return _Outcome(failed=_ids(chunk))
+            return _failed(chunk, "schema")
         labels = {
             keys[item.k]: Classification(
                 review_id=keys[item.k],
@@ -144,6 +149,10 @@ class _ChunkClassifier:
     def _split(self, chunk: Sequence[Review], refusal_split: bool) -> _Outcome:
         middle = len(chunk) // 2
         return self._ask(chunk[:middle], refusal_split) | self._ask(chunk[middle:], refusal_split)
+
+
+def _failed(chunk: Sequence[Review], failure_class: str) -> _Outcome:
+    return _Outcome(failed=dict.fromkeys(_ids(chunk), failure_class))
 
 
 def _ids(chunk: Sequence[Review]) -> list[str]:

@@ -301,7 +301,11 @@ def eval_command(  # craftsman-ignore: PY003, WARN-PY001 (typer options; hint on
     except LLMError as error:
         typer.echo(str(error))
         raise typer.Exit(EXIT_REFUSED) from error
-    out = run_classification_suite(
-        settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
-    )
+    try:
+        out = run_classification_suite(
+            settings, deps.llm, deps.store, dataset, gold_path=gold if dataset == "gold" else None
+        )
+    except LLMError as error:  # EvalAborted and other infrastructure failures: nothing was scored
+        typer.echo(str(error))
+        raise typer.Exit(EXIT_REFUSED) from error
     typer.echo(f"results: {out}")

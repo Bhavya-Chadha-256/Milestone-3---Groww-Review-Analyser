@@ -163,3 +163,19 @@ def test_eval_compare_prints_verdicts(tmp_settings: Settings, tmp_path: Path) ->
     result = invoke(tmp_settings, tmp_path, "eval", "--compare", str(paths[0]), str(paths[1]))
     assert result.exit_code == 0, result.output
     assert "E-CLS-1" in result.output and "within noise" in result.output
+
+
+def test_eval_suite_aborted_exits_with_message(
+    tmp_settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # review I3
+    from pulse.evals.suites.classification import EvalAborted
+
+    def out_of_budget(*args: Any, **kwargs: Any) -> Path:
+        raise EvalAborted("daily token budget ran out; nothing was scored. Run again after 00:00 UTC")
+
+    monkeypatch.setattr(
+        cli, "build_dependencies", lambda settings, **kwargs: cli.Deps(store=None, sources=[])
+    )
+    monkeypatch.setattr(cli, "run_classification_suite", out_of_budget)
+    result = invoke(tmp_settings, tmp_path, "eval", "--suite", "classification")
+    assert result.exit_code == 2 and "nothing was scored" in result.output

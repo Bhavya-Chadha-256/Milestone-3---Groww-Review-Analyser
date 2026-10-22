@@ -19,8 +19,8 @@ from pulse.evals.metrics import (
     paired_bootstrap_ci,
 )
 from pulse.evals.runner import EvalRun, compare
-from pulse.evals.suites.classification import run_classification_suite
-from pulse.llm.schema import LLMRequest, UsageLedger
+from pulse.evals.suites.classification import EvalAborted, run_classification_suite
+from pulse.llm.schema import LLMRequest, LLMTruncated, UsageLedger
 from pulse.models import Taxonomy, Theme
 from pulse.store import Store
 from pulse.timeutil import window_for_week
@@ -259,3 +259,42 @@ def test_classification_suite_uses_temp_store(
     assert {"E-CLS-1", "E-CLS-2", "E-CLS-3", "E-CLS-4", "E-CLS-5", "E-CLS-6", "E-CLS-7"} <= set(
         summary["metrics"]
     )
+
+
+def gold_fixture(store: Store, tmp_path: Path) -> Path:
+    ids = seed_store(store, 40)
+    store.save_taxonomy(taxonomy())
+    return write_gold(tmp_path / "gold_v1.csv", dict.fromkeys(ids[:30], "support"), kappa=0.85)
+
+
+def test_suite_aborts_when_daily_budget_runs_out(
+    tmp_settings: Settings, tmp_store: Store, tmp_path: Path
+) -> None:  # evaluation §5 rule 2, review I3
+    gold_path = gold_fixture(tmp_store, tmp_path)
+    llm = FakeLLM({"classify": echo_labels(lambda key: "support")}, tokens_left=1500, tokens_per_call=1000)
+    with pytest.raises(EvalAborted, match="00:00 UTC"):
+        run_classification_suite(
+            tmp_settings, llm, tmp_store, "gold", gold_path=gold_path, out_root=tmp_path / "results"
+        )
+    assert not (tmp_path / "results").exists()
+
+
+def test_infrastructure_failures_are_not_scored(
+    tmp_settings: Settings, tmp_store: Store, tmp_path: Path
+) -> None:  # evaluation §5 rule 2, review I3
+    gold_path = gold_fixture(tmp_store, tmp_path)
+
+    def truncate_one_star(req: LLMRequest) -> BaseModel:
+        payload = req.user[req.user.index("<reviews>") + len("<reviews>") : req.user.index("</reviews>")]
+        if any(item["rating"] == 1 for item in json.loads(payload)):
+            raise LLMTruncated("response hit max_completion_tokens")
+        return echo_labels(lambda key: "support")(req)
+
+    llm = FakeLLM({"classify": truncate_one_star})
+    out = run_classification_suite(
+        tmp_settings, llm, tmp_store, "gold", gold_path=gold_path, out_root=tmp_path / "results"
+    )
+    summary = json.loads((out / "summary.json").read_text())
+    errors = [json.loads(line) for line in (out / "errors.jsonl").read_text().splitlines()]
+    assert summary["metrics"]["E-CLS-1"]["value"] == 1.0 and summary["metrics"]["E-CLS-5"]["value"] == 0.2
+    assert len(errors) == 6 and {error["failure_class"] for error in errors} == {"truncated"}

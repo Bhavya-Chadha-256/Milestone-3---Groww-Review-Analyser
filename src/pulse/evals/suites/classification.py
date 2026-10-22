@@ -12,11 +12,16 @@ from pulse.config import Settings
 from pulse.evals.gold import GOLD_PATH, GoldSet, load_gold
 from pulse.evals.metrics import class_labels, cohen_kappa, macro_f1, majority_baseline, paired_bootstrap_ci
 from pulse.evals.runner import RESULTS_ROOT, EvalRun
-from pulse.llm.classify import classify_reviews
+from pulse.llm.classify import ClassifyResult, classify_reviews
+from pulse.llm.schema import LLMError
 from pulse.models import UNTHEMED, Classification
 from pulse.store import Store
 
 REPETITIONS = 2
+
+
+class EvalAborted(LLMError):
+    """The suite could not finish for an infrastructure reason; nothing is scored (evaluation §5 rule 2)."""
 
 
 def run_classification_suite(  # craftsman-ignore: WARN-PY001, PY003 (plan interface; hint on closing line)
@@ -36,9 +41,10 @@ def run_classification_suite(  # craftsman-ignore: WARN-PY001, PY003 (plan inter
     if macro_f1(gold.labels, gold.labels, classes)[0] != 1.0:  # oracle check: the scorer itself must be sound
         raise RuntimeError("oracle check failed: gold labels scored against themselves did not give F1 = 1.0")
     reviews = store.get_reviews(list(gold.labels))
-    runs = [_classify_fresh(llm, settings, reviews, taxonomy) for _ in range(REPETITIONS)]
+    results = [_classify_fresh(llm, settings, reviews, taxonomy) for _ in range(REPETITIONS)]
+    runs = [result.classifications for result in results]
     run = EvalRun(f"classification-{dataset}", out_root)
-    _record_cases(run, gold, runs, llm, settings)
+    _record_cases(run, gold, runs, results[0].failures, llm, settings)
     _record_metrics(run, gold, runs, classes)
     return run.finish(llm.usage, settings.llm.pricing)
 
@@ -52,9 +58,7 @@ def _dataset_path(dataset: str) -> Path:
     return drift[-1]
 
 
-def _classify_fresh(
-    llm: object, settings: Settings, reviews: list, taxonomy: object
-) -> dict[str, Classification]:
+def _classify_fresh(llm: object, settings: Settings, reviews: list, taxonomy: object) -> ClassifyResult:
     with tempfile.TemporaryDirectory() as scratch:
         result = classify_reviews(
             llm,
@@ -63,18 +67,28 @@ def _classify_fresh(
             taxonomy,
             chunk_size=settings.llm.classify_chunk_size,
         )
-    return result.classifications
+    if result.stopped_for_budget:  # §5 rule 2: a partial run would score unsent reviews as wrong
+        raise EvalAborted(
+            f"daily token budget ran out with {result.pending_after} of {len(reviews)} gold reviews unsent; "
+            "nothing was scored. Run the suite again after 00:00 UTC, on a day with no backfill."
+        )
+    return result
 
 
 def _record_cases(  # craftsman-ignore: WARN-PY001, PY003 (hint on closing line)
-    run: EvalRun, gold: GoldSet, runs: list[dict[str, Classification]], llm: object, settings: Settings
+    run: EvalRun,
+    gold: GoldSet,
+    runs: list[dict[str, Classification]],
+    failures: dict[str, str],
+    llm: object,
+    settings: Settings,
 ) -> None:
     served = Counter(llm.usage.served_models()).most_common(1)
     served_model = served[0][0] if served else settings.llm.model
     for review_id, label in gold.labels.items():
         first = runs[0].get(review_id)
         if first is None:
-            run.error(review_id, "unclassified", "no label after retries")
+            run.error(review_id, failures.get(review_id, "unclassified"), "no label after retries")
             continue
         record = {
             "gold": label,
@@ -90,7 +104,7 @@ def _record_metrics(
     run: EvalRun, gold: GoldSet, runs: list[dict[str, Classification]], classes: list[str]
 ) -> None:
     headline = {case["case_id"] for case in run.headline_cases()}
-    truth = {key: label for key, label in gold.labels.items() if key in headline or key not in runs[0]}
+    truth = {key: label for key, label in gold.labels.items() if key in headline}  # errors are never scored
     pred = {key: runs[0][key].theme_id for key in truth if key in runs[0]}
     score, per_class = macro_f1(truth, pred, classes)
     run.metric(
