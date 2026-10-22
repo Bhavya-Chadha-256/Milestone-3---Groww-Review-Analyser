@@ -1,0 +1,26 @@
+# Operation mapping for tests/stub_mcp.py (Task 5.1).
+server:
+  transport: stdio
+  command: [unused-in-tests]
+operations:
+  create_doc:
+    tool: create_document
+    args: {title: "{title}", content: "{body}", folder_id: "{folder_id}"}
+    requires_id: true
+    id_regex: '"documentId":\s*"([^"]+)"'
+    url_regex: '"url":\s*"([^"]+)"'
+  update_doc:
+    tool: update_document
+    args: {document_id: "{doc_id}", content: "{body}"}
+    id_regex: '"documentId":\s*"([^"]+)"'
+    url_regex: '"url":\s*"([^"]+)"'
+  read_doc:
+    tool: get_document
+    args: {document_id: "{doc_id}"}
+  create_draft:
+    tool: create_gmail_draft
+    args: {recipient: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}
+    optional_args: [html_body]
+    requires_id: true
+    id_regex: '"draftId":\s*"([^"]+)"'
+allowlist: [create_doc, update_doc, read_doc, create_draft]

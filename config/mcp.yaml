@@ -1,0 +1,29 @@
+# Google Workspace MCP server and the mapping from our operations to its tools (architecture §7, Task 5.1).
+# Chosen server: workspace-mcp (github.com/taylorwilsdon/google_workspace_mcp), run locally over stdio.
+# It holds the Google OAuth tokens itself; this file holds no secrets. `env` lists the NAMES of variables
+# passed through to the server process (their values live in .env).
+# Tool names stay <placeholders> until `pulse doctor` lists the real ones (Phase 5 checkpoint).
+server:
+  transport: stdio
+  command: [uvx, workspace-mcp, --single-user, --tools, docs, gmail]
+  env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]
+operations:
+  create_doc:
+    tool: <create_doc_tool>
+    args: {title: "{title}", content: "{body}", folder_id: "{folder_id}"}
+    requires_id: true
+    id_regex: '<regex capturing the document id>'
+    url_regex: '<regex capturing the document url>'
+  update_doc:
+    tool: <update_doc_tool>
+    args: {document_id: "{doc_id}", content: "{body}"}
+  read_doc:
+    tool: <read_doc_tool>
+    args: {document_id: "{doc_id}"}
+  create_draft:
+    tool: <create_draft_tool>
+    args: {to: "{recipient}", subject: "{subject}", body: "{text}", html_body: "{html}"}
+    optional_args: [html_body]
+    requires_id: true
+    id_regex: '<regex capturing the draft id>'
+allowlist: [create_doc, update_doc, read_doc, create_draft]
