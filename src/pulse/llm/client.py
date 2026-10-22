@@ -25,6 +25,7 @@ from pulse.store import Store
 
 REASONING_MODEL_PREFIX = "openai/gpt-oss"  # only these models accept reasoning_effort
 RATE_LIMIT_ATTEMPTS = 3
+DAILY_LIMIT_RETRY_SECONDS = 60.0  # a longer retry-after means the provider's daily quota is used up
 REASK_SUFFIX = "\n\nYour previous output failed validation: {error}. Return corrected JSON only."
 
 
@@ -85,7 +86,7 @@ class GroqLLM:
         key = os.environ.get(settings.api_key_env)
         if not key:
             raise LLMError(f"{settings.api_key_env} is not set; add it to .env (see .env.example)")
-        return groq.Groq(api_key=key, max_retries=2)
+        return groq.Groq(api_key=key, max_retries=0)  # retries go through the limiter, so they are counted
 
     def remaining_tokens_today(self, model: str | None = None) -> int:
         return self._limiter(model or self.settings.model).remaining_today()
@@ -121,22 +122,40 @@ class GroqLLM:
     def _send(self, req: LLMRequest, params: dict[str, Any]) -> BaseModel:
         limiter = self._limiter(params["model"])
         tokens = request_tokens(req, self.settings.stages[req.stage])
-        for _ in range(RATE_LIMIT_ATTEMPTS):
+        problem = "rate-limited"
+        for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
             limiter.acquire(tokens, keep_reserve=req.stage == "classify")
+            last = attempt == RATE_LIMIT_ATTEMPTS
             try:
                 resp = self.client.chat.completions.create(**params)
             except groq.RateLimitError as error:
-                limiter.wait_after_429(_retry_after(error))
+                retry_after = _retry_after(error)
+                if _daily_limit_reached(error, retry_after):  # LLM-13: resume tomorrow, don't sleep for hours
+                    raise limiter.day_used_up() from error
+                problem = "rate-limited"
+                if not last:
+                    limiter.wait_after_429(retry_after)
+                continue
+            except (groq.InternalServerError, groq.APIConnectionError):
+                problem = "unavailable"
+                if not last:
+                    limiter.wait_after_429(None)
                 continue
             except groq.BadRequestError as error:
                 if "json_validate_failed" in str(error) or "json_validate_failed" in json.dumps(error.body):
+                    limiter.record(tokens)  # the rejected output still used tokens; count the estimate
                     raise InvalidOutput(str(error)) from error
                 raise LLMError(f"bad request: {error}") from error
             limiter.record(resp.usage.total_tokens)
             self.usage.add(req.stage, resp.usage, model=resp.model)
             parsed, _ = parse_response(resp, req.schema)
             return parsed
-        raise LLMError(f"still rate-limited after {RATE_LIMIT_ATTEMPTS} attempts")
+        raise LLMError(f"still {problem} after {RATE_LIMIT_ATTEMPTS} attempts")
+
+
+def _daily_limit_reached(error: groq.RateLimitError, retry_after: float | None) -> bool:
+    long_wait = retry_after is not None and retry_after > DAILY_LIMIT_RETRY_SECONDS
+    return long_wait or "per day" in str(error).lower()
 
 
 def _retry_after(error: groq.RateLimitError) -> float | None:

@@ -222,3 +222,51 @@ def test_load_prompt_requires_data_rule(tmp_path: Any) -> None:
     (tmp_path / "good.md").write_text(f"<!-- prompt_version: good-v1 -->\nClassify reviews. {DATA_RULE}\n")
     prompt = load_prompt("good", tmp_path)
     assert prompt.version == "good-v1" and DATA_RULE in prompt.text
+
+
+def rate_limited(retry_after: str, message: str = "slow down") -> Exception:
+    return api_error(groq.RateLimitError, 429, {"error": {"message": message}}, {"retry-after": retry_after})
+
+
+def test_daily_rate_limit_stops_for_the_day_without_waiting(
+    settings: Settings, tmp_store: Store
+) -> None:  # LLM-13, review I1
+    llm, fake, sleeps = make_llm(settings, tmp_store, [rate_limited("3600"), resp()])
+    with pytest.raises(DailyBudgetExhausted):
+        llm.structured(REQUEST)
+    per_day = "Rate limit reached on tokens per day (TPD): Limit 200000, Used 199500"
+    llm, fake, sleeps = make_llm(settings, tmp_store, [rate_limited("5", per_day), resp()])
+    with pytest.raises(DailyBudgetExhausted):
+        llm.structured(REQUEST)
+    assert sleeps == [] and len(fake.completions.calls) == 1
+
+
+def test_rate_limit_gives_up_without_a_final_sleep(settings: Settings, tmp_store: Store) -> None:  # LLM-10
+    llm, fake, sleeps = make_llm(settings, tmp_store, [rate_limited("2") for _ in range(3)])
+    with pytest.raises(LLMError, match="rate-limited"):
+        llm.structured(REQUEST)
+    assert len(fake.completions.calls) == 3 and sleeps == [2.0, 2.0]
+
+
+def test_server_error_is_retried(settings: Settings, tmp_store: Store) -> None:  # LLM-10
+    down = api_error(groq.InternalServerError, 503, {"error": {"message": "over capacity"}})
+    llm, fake, sleeps = make_llm(settings, tmp_store, [down, resp()])
+    assert llm.structured(REQUEST).label == "praise"
+    assert len(fake.completions.calls) == 2 and len(sleeps) == 1
+
+
+def test_default_client_leaves_retries_to_the_rate_limiter(
+    settings: Settings, tmp_store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:  # LLM-10, review I1
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    assert GroqLLM(settings.llm, tmp_store).client.max_retries == 0
+
+
+def test_json_validate_failure_counts_toward_daily_usage(
+    settings: Settings, tmp_store: Store
+) -> None:  # LLM-3, review I1
+    bad = api_error(groq.BadRequestError, 400, {"error": {"code": "json_validate_failed", "message": "bad"}})
+    llm, _, _ = make_llm(settings, tmp_store, [bad, resp()])
+    llm.structured(REQUEST)
+    used, requests = tmp_store.llm_usage(utc_day(), PIPELINE_MODEL)
+    assert requests == 2 and used > 120

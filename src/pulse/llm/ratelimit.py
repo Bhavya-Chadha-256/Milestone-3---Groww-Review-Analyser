@@ -64,6 +64,11 @@ class RateLimiter:
     def record(self, used_tokens: int) -> None:
         self.store.add_llm_usage(self.today(), self.model, used_tokens)
 
+    def day_used_up(self) -> DailyBudgetExhausted:
+        """The error for a provider-side daily limit, with the usage this process knows about."""
+        used, _ = self.store.llm_usage(self.today(), self.model)
+        return DailyBudgetExhausted(used, self.limits.tpd)
+
     def wait_after_429(self, retry_after: float | None) -> None:
         self.sleep(retry_after if retry_after is not None else DEFAULT_RETRY_SECONDS)
 
