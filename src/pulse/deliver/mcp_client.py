@@ -90,6 +90,11 @@ class NotAuthorised(Exception):
     """The MCP server reports that its Google account isn't authorised (e.g. an expired refresh token)."""
 
 
+def supports(cfg: McpConfig, op: str) -> bool:
+    """Whether the config maps and allows the operation; no server connection needed."""
+    return op in cfg.operations and op in cfg.allowlist
+
+
 def load_mcp_config(path: Path) -> McpConfig:
     return McpConfig.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
@@ -121,7 +126,7 @@ class WorkspaceGateway:
 
     def supports(self, op: str) -> bool:
         """Whether this server offers the operation (an append-only server has no create, read or draft)."""
-        return op in self.cfg.operations and op in self.cfg.allowlist
+        return supports(self.cfg, op)
 
     async def call(self, op: str, **fields: str) -> ToolResult:
         spec = self.cfg.operations.get(op)

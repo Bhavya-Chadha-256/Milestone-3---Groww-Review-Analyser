@@ -16,7 +16,14 @@ from pulse.acquire.app_store_feed import AppStoreFeedClient, FetchReport
 from pulse.acquire.play_store import PlayStoreClient
 from pulse.acquire.raw_export import raw_status, write_raw_export
 from pulse.config import Settings, load_env, load_settings
-from pulse.deliver.mcp_client import McpConfig, broken_gateway, gateway_problem, load_mcp_config, open_gateway
+from pulse.deliver.mcp_client import (
+    McpConfig,
+    broken_gateway,
+    gateway_problem,
+    load_mcp_config,
+    open_gateway,
+    supports,
+)
 from pulse.evals.gold import GOLD_PATH, GoldMetaError, export_gold
 from pulse.evals.runner import compare
 from pulse.evals.suites.classification import run_classification_suite
@@ -409,6 +416,18 @@ def _run_suite(settings: Settings, suite: str, dataset: str, gold: Path) -> Path
     )
 
 
+def delivery_readiness(settings: Settings) -> Any:
+    """The delivery half of `pulse doctor`, for the dashboard's Publish and Draft buttons (Task 7.3)."""
+    from pulse.web.pulse_view import Readiness
+
+    factory, config = _gateway()
+    checks = [_delivery_check(settings, config), _mcp_check(factory)]
+    return Readiness(
+        problems=[(check.name, check.detail) for check in checks if not check.ok],
+        draft_supported=config is not None and supports(config, "create_draft"),
+    )
+
+
 @app.command("serve")
 def serve_command(
     ctx: typer.Context,
@@ -445,3 +464,7 @@ def doctor_command(ctx: typer.Context) -> None:
         typer.echo(f"{check.name} {'OK' if check.ok else 'FAIL'}  {check.detail}")
     if not all(check.ok for check in checks):
         raise typer.Exit(1)
+
+
+if __name__ == "__main__":  # the dashboard runs `python -m pulse.cli …` (Task 7.3)
+    app()

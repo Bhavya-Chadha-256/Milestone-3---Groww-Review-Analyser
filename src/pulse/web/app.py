@@ -7,10 +7,8 @@ access log, and query strings and review text never reach a log line (E-WEB-3).
 
 import csv
 import io
-import threading
 from dataclasses import asdict
-from datetime import UTC, date, datetime
-from pathlib import Path
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
@@ -19,28 +17,21 @@ from pydantic import ValidationError
 
 from pulse.analysis.aggregate import trend_arrow
 from pulse.config import Settings
-from pulse.store import Store
-from pulse.timeutil import (
-    ISO_WEEK_PATTERN,
-    Window,
-    iso_week_label,
-    resolve_window,
-    today_in_tz,
-    window_for_week,
-)
+from pulse.timeutil import iso_week_label
+from pulse.web.actions import router as actions_router
 from pulse.web.queries import (
     REVIEW_FIELDS,
     SORTS,
     Dataset,
     ReviewFilter,
     data_quality,
-    load_dataset,
     rating_distribution,
     review_page,
     summary,
     theme_breakdown,
     weekly_trend,
 )
+from pulse.web.state import DashboardState, InvalidRequest, NotReady, ServerHooks, allowed_hosts, valid_week
 
 LIST_FIELDS = frozenset({"sources", "ratings", "themes", "sentiments", "languages", "app_versions"})
 PAGE_PARAMS = frozenset({"week", "sort", "page", "page_size"})
@@ -48,66 +39,18 @@ FORMULA_PREFIXES = ("=", "+", "-", "@")
 NOT_READY = "No review database yet. Run `pulse ingest` first."
 
 
-class InvalidRequest(Exception):
-    """A bad query parameter. The response names the fields but never echoes their values."""
-
-    def __init__(self, fields: list[str]) -> None:
-        super().__init__("invalid request")
-        self.fields = sorted(set(fields))
-
-
-class NotReady(Exception):
-    pass
-
-
-class DashboardState:
-    """What every request shares: the settings and the read-only store, opened once the database exists."""
-
-    def __init__(self, settings: Settings, today: date | None) -> None:
-        self.settings = settings
-        self.today = today
-        self._store: Store | None = None
-        self._lock = threading.Lock()
-
-    def store(self) -> Store | None:
-        with self._lock:
-            if self._store is None and Path(self.settings.paths.db).is_file():
-                self._store = Store.open_readonly(Path(self.settings.paths.db))
-            return self._store
-
-    def window(self, week: str | None) -> Window:
-        window = self.settings.window
-        if week:
-            return window_for_week(week, window.weeks, window.timezone)
-        today = self.today or today_in_tz(window.timezone, datetime.now(UTC))
-        return resolve_window(today, window.weeks, window.timezone)
-
-    def dataset(self, week: str | None) -> Dataset:
-        store = self.store()
-        if store is None:
-            raise NotReady
-        return load_dataset(
-            store,
-            self.window(week),
-            min_theme_reviews=self.settings.pulse.min_theme_reviews,
-            trend_z=self.settings.themes.trend_z,
-        )
-
-
-def create_app(settings: Settings, *, today: date | None = None) -> FastAPI:
+def create_app(settings: Settings, *, today: date | None = None, hooks: ServerHooks | None = None) -> FastAPI:
     """The dashboard API. `today` pins the default week (tests); otherwise it is today's date in IST."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    state = DashboardState(settings, today)
-    app.state.dashboard = state
+    app.state.dashboard = DashboardState(settings, today, hooks or ServerHooks())
     _install_guards(app, settings)
     app.include_router(router)
+    app.include_router(actions_router)
     return app
 
 
 def _install_guards(app: FastAPI, settings: Settings) -> None:
-    port = settings.dashboard.port
-    host = settings.dashboard.host
-    allowed = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}", f"{host}:{port}"}
+    allowed = allowed_hosts(settings)
 
     @app.middleware("http")
     async def guard(request: Request, call_next: Any) -> Response:
@@ -143,21 +86,11 @@ def parse_filter(request: Request) -> tuple[str | None, ReviewFilter]:
     except ValidationError as error:
         bad += [str(detail["loc"][0]) for detail in error.errors()]
     week = params.get("week") or None
-    if week is not None and not _valid_week(week):
+    if week is not None and not valid_week(week):
         bad.append("week")
     if bad:
         raise InvalidRequest(bad)
     return week, flt
-
-
-def _valid_week(week: str) -> bool:
-    if not ISO_WEEK_PATTERN.match(week):
-        return False
-    try:
-        window_for_week(week, 12, "UTC")
-    except ValueError:
-        return False
-    return True
 
 
 def _paging(request: Request, settings: Settings) -> tuple[str, int, int]:

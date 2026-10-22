@@ -123,13 +123,17 @@ DASHBOARD_TODAY = date(2026, 10, 22)
 DASHBOARD_URL = "http://127.0.0.1:8787"
 
 
-def dashboard_client(settings: Settings) -> Any:
-    """A TestClient for `create_app(settings)`; the web extra is imported only by dashboard tests."""
+def dashboard_client(settings: Settings, **hooks: Any) -> Any:
+    """A TestClient for `create_app(settings)`; the web extra is imported only by dashboard tests.
+    Delivery readiness defaults to "ready, no draft tool", so no test reaches a real MCP server."""
     from fastapi.testclient import TestClient
 
-    from pulse.web.app import create_app
+    from pulse.web.app import ServerHooks, create_app
+    from pulse.web.pulse_view import Readiness
 
-    return TestClient(create_app(settings, today=DASHBOARD_TODAY), base_url=DASHBOARD_URL)
+    hooks = {"readiness": lambda: Readiness(problems=[], draft_supported=False)} | hooks
+    app = create_app(settings, today=DASHBOARD_TODAY, hooks=ServerHooks(**hooks))
+    return TestClient(app, base_url=DASHBOARD_URL)
 
 
 @pytest.fixture
