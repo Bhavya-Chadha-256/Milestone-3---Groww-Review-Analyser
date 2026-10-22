@@ -400,6 +400,7 @@ Every LLM stage returns JSON that matches a schema. It is sent as `response_form
 | Item | Assumption |
 |---|---|
 | First backfill | 2,177 eligible reviews × ~37 tokens of text, in 44 chunks of ~5.5K tokens including the output allowance ≈ 240K tokens estimated; about 390K observed (≈180 per review, with reasoning) |
+| Where it goes (observed, per batch of 50) | ~8,700 tokens: instructions + theme list + schema ~1,100; review text ~2,500; visible labels ~1,000; hidden reasoning ~4,100 (gpt-oss reasons even at `effort: low`, and reasoning counts against the budget) |
 | Weekly increment | 115–274 new eligible reviews ≈ 15–30K tokens |
 | Price | $0 on the free tier; `llm.pricing` lets a paid plan be costed later |
 
@@ -705,7 +706,7 @@ pulse eval --suite deterministic|classification|pulses|judges|injection|stabilit
 pulse eval --calibrate <family> · --export-gold 200 · --compare A B · --dataset drift
 ```
 
-**Scheduling [Decision]:** start with manual weekly runs. Once 3 consecutive pulses pass human review (evaluation §6), add a local `launchd` job on Monday at 09:00 on a Mac set to IST, where the MCP server is already authorized. Hosted scheduling (CI or a managed agent deployment) is deferred: it needs a Workspace MCP server that is reachable remotely and has persistent auth.
+**Scheduling [Decision]:** start with manual weekly runs. Once 3 consecutive pulses pass human review (evaluation §6), add a local `launchd` job on Monday at 09:00 on a Mac set to IST, where the MCP server is already authorized. The job must fetch fresh reviews (`pulse fetch play-store`, `pulse fetch app-store`) before `pulse run`, because `pulse run` only ingests what is already in `data/raw/`. Hosted scheduling (CI or a managed agent deployment) is deferred: it needs a Workspace MCP server that is reachable remotely and has persistent auth.
 
 **Observability**
 - Structured JSON logs for each stage, without review content.

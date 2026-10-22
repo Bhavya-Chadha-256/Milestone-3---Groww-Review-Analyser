@@ -93,6 +93,47 @@ Update this table whenever a task or phase changes state.
 **Waiting on the user**
 - Two people to label the 200-review gold set (Phase 3 checkpoint); none available as of 2026-10-22.
 - The Google OAuth client, Drive folder and one-time workspace-mcp authorisation (Phase 5 checkpoint).
+- **Go-ahead for the Phase 5 review.** Work paused before it at the user's request ("stop after stage 5 is implemented").
+- **Whether to push** the local commits on `phase-3-themes`, `phase-4-pulse` and `phase-5-deliver` to GitHub (asked 2026-10-22, not yet answered). Never push `archive/full-history`.
+
+**User decisions from the 2026-10-22 session** (also in the ledger)
+- Build Phases 4–5 on the labels available while the backfill continues in the background; accept that the first pulse covers fewer weeks until it finishes.
+- No human annotators for now, so the gold set and E-CLS-1 wait; build on anyway.
+- Delivery through a **self-hosted** Google Workspace MCP server (not the Claude connectors); Gmail drafts to `bhavyachadha256@gmail.com`.
+- Stop after Phase 5 is implemented; don't start Phase 6 without asking.
+- Prefers free options: wait for the daily reset rather than pay. Explain things in plain, non-technical language when asked "what" or "why".
+
+**Session notes carried over from the 2026-10-22 chat**
+- **Backfill state at hand-over (17:26 IST, 2026-10-22):** 800 of 2,177 classified; today's Groq usage 178,331 tokens in 33 calls, so nothing more can run until 00:00 UTC (05:30 IST, 23 Oct).
+- **Recreating the daily schedule in a new session** (session-only `CronCreate` jobs; the original ones were `37 5 * * *` and `47 17 * * *`, local IST). Each job's prompt: (1) if the UTC date hasn't changed since the last day's run, stop; (2) if `SELECT COUNT(*) FROM classifications` ≥ 2,177 and `report.md` shows Top themes, delete both jobs and stop; (3) otherwise run `uv run pulse run --week 2026-W42 --from classify --until aggregate` in the background and wait; (4) read `report.md` (never print review text): `FAILED` with `daily_token_budget` is normal; when `AGGREGATED`, check 3–5 themes, names ≤ 4 words, `actionable_unthemed_share` ≤ 0.20, no `broad_theme:` warning, then delete both jobs; (5) update this Status/Handoff and the ledger, commit those docs on the current branch (no push), and tell the user in plain language. The evening job is a backup in case Groq's daily limit is a rolling 24 hours.
+- **For scheduled jobs to fire,** the laptop must be awake and plugged in with the lid open, and VS Code with that Claude session must stay open. To stop the Mac sleeping overnight: `caffeinate -i -s` in a Terminal (Ctrl+C in the morning). Data, `.env` and the 800 labels exist only on this laptop, so the backfill can't move to the cloud without uploading private data.
+- **Extra Groq keys don't help.** Groq's free limits are per organisation, so another key in the same account shares the same 200K tokens/day. Keys from extra accounts would likely break Groq's terms and would also need code changes (the daily usage ledger is per model, not per key). The legitimate faster option is Groq's paid Developer tier: the remaining ~1,377 reviews are roughly 250K tokens, estimated well under $1 on `gpt-oss-120b` (check current pricing), plus raising `llm.limits.tpd` in `config/pulse.yaml`. The user prefers waiting.
+- **Where the ~175 tokens per review go** (day 1: 16 batches of 50, ~8,700 tokens per batch): instructions, theme list and schema ~1,100; review text ~2,500; visible labels ~1,000; the model's hidden reasoning ~4,100 (~80 per review). Reasoning effort is already `low`. Only the first backfill is expensive: weekly runs add 115–274 reviews (~20–50K tokens).
+- **Reading workspace-mcp's real tool names** (needed for `config/mcp.yaml`; the project's docs don't list them): after the Google setup, run
+  ```bash
+  uv run python - <<'EOF'
+  from pathlib import Path
+
+  import anyio
+  from mcp import Client
+
+  from pulse.config import load_env
+  from pulse.deliver.mcp_client import _server_target, load_mcp_config
+
+  load_env(Path(".env"))  # the server needs the GOOGLE_* variables
+
+
+  async def main() -> None:
+      config = load_mcp_config(Path("config/mcp.yaml"))
+      async with Client(_server_target(config.server)) as client:
+          for tool in (await client.list_tools()).tools:
+              print(tool.name, sorted((tool.input_schema or {}).get("properties", {})))
+
+
+  anyio.run(main)
+  EOF
+  ```
+  then map `create_doc`, `update_doc`, `read_doc` and `create_draft` to the Docs and Gmail tools it prints (never a send, share or delete tool), set `id_regex`/`url_regex` from a real create result, and run `uv run pulse doctor`.
 
 **Working agreements**
 - **Decisions:** make the call and record it as an **As built** note or a ledger ruling. Don't stop to ask.
@@ -2691,7 +2732,7 @@ Expected: all passed.
 - Consumes: `pulse run` (5.3); the human review protocol (evaluation §6).
 - Produces:
   - **`TEMPLATE.md`:** checks H1–H8 from evaluation §6, each with a pass/fail and notes field, and a header holding `iso_week`, `run_id`, reviewers and date.
-  - **The plist:** runs `<repo>/.venv/bin/pulse run` with `WorkingDirectory` set to the repo. `StartCalendarInterval` is `{Weekday: 1, Hour: 9, Minute: 0}` in local time; the Mac must be set to IST (AGG-12). Logs go to `runs/launchd.log`, and the plist holds no secrets.
+  - **The plist:** runs `<repo>/.venv/bin/pulse run` with `WorkingDirectory` set to the repo. **Plan gap (noted 2026-10-22):** `pulse run` only ingests files already in `data/raw/`, so the weekly job must first run `pulse fetch play-store` and `pulse fetch app-store` (e.g. a small wrapper script), or each week reuses stale data. `StartCalendarInterval` is `{Weekday: 1, Hour: 9, Minute: 0}` in local time; the Mac must be set to IST (AGG-12). Logs go to `runs/launchd.log`, and the plist holds no secrets.
 
 - [ ] **Step 1: Write `TEMPLATE.md`, the plist and the README sections**
 

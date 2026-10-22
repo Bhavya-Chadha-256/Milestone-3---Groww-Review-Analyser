@@ -53,7 +53,7 @@ Google is reached only through a Google Workspace MCP server, [workspace-mcp](ht
 2. **`.env`:** set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `USER_GOOGLE_EMAIL` (the account that owns the Doc and the draft).
 3. **`config/pulse.yaml`:** set `delivery.recipient` and `delivery.drive_folder_id` (the ID at the end of the Drive folder's URL).
 4. **Authorise once:** the first time the server needs Google, it opens a browser consent page; approve it. When the auth later expires, the run report says so and names the `--from` command.
-5. **Map the tools:** fill the `<placeholders>` in `config/mcp.yaml` with the server's tool and argument names, then run `uv run pulse doctor` until every line says `OK`. Tools that send, share or delete are refused by design.
+5. **Map the tools:** list the server's tools (script in `implementation.md` → Handoff → "Reading workspace-mcp's real tool names"), fill the `<placeholders>` in `config/mcp.yaml` with its tool and argument names, then run `uv run pulse doctor` until every line says `OK`. Tools that send, share or delete are refused by design.
 
 **Mode B (no MCP server):** run `uv run pulse run --week <week> --dry-run`, then ask a Claude Code session with the claude.ai Google Drive and Gmail connectors to publish `runs/<run_id>/pulse.md` as a Doc and create the draft.
 
