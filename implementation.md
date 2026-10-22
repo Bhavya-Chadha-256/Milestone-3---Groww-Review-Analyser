@@ -1874,7 +1874,7 @@ The whole-branch review returned "with fixes" (1 Critical, 6 Important). Each fi
 - **`Quote.month`** is computed in IST.
 - **`quotes.md`** contains `DATA_RULE`, plus the rules: pick the most representative review, copy a contiguous span of ≤30 words exactly with no edits or ellipses, prefer spans without people's names, and `Avoid profanity and personal attacks.` (QUO-7).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.parametrize("quote,ok", [("Support is not replying at all.", True), ('"Withdrawal stuck for 3 days."', True),
@@ -1892,23 +1892,30 @@ def test_quote_month_uses_ist(): ...                                     # QUO-1
 def test_quotes_prompt_has_rules(): ...                                  # DATA_RULE and "Avoid profanity and personal attacks." in system
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_quotes.py -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `quotes.py` and `quotes.md`**
+- [x] **Step 3: Implement `quotes.py` and `quotes.md`**
 
 The prompt file starts with `<!-- prompt_version: quotes-v1 -->`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_quotes.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: select verbatim quotes with code-side verification"`
+
+> **As built (2026-10-22):**
+> - **`QuotePick(k, quote)`:** the model answers with the review's short key `k` from `reviews_json` (as in classification), not its 16-character `review_id`; code maps it back.
+> - **Re-ask:** the follow-up prompt names the reason (`k=… is not one of the reviews`, or `not a verbatim span … or longer than 30 words`). A refusal, truncation or schema error counts as a failed attempt.
+> - **Pool order:** a seeded shuffle first, then a stable sort by (not latest week, `abs(rating − theme median)`); the median is over every review classified in the theme. Reviews with an `excluded_reason` are never quoted.
+> - **Fallback:** `first_sentence` splits at `.`, `!` or `?` followed by whitespace, or at a line break.
+> - **Extra tests:** `test_first_sentence_stops_at_terminal_punctuation`, `test_candidate_pool_keeps_at_most_quote_candidates`.
 
 ---
 
