@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from pulse.config import Settings
 from pulse.llm.discover import DiscoveredTheme, DiscoveryOutput
-from pulse.llm.schema import LLMRequest
+from pulse.llm.schema import DailyBudgetExhausted, LLMRequest
 from pulse.models import RunStatus, Taxonomy, Theme
 from pulse.pipeline import RunOptions, RunOutcome, run_pipeline
 from pulse.store import Store
@@ -186,7 +186,8 @@ def test_budget_exhaustion_fails_run_with_resume_hint(
     out = run(tmp_settings, tmp_store, tight)
     assert out.status == RunStatus.FAILED
     report = (out.run_dir / "report.md").read_text()
-    assert "daily_token_budget: classified 100 of 150" in report and "--from classify" in report
+    assert "daily_token_budget: classified 100 of 150" in report
+    assert "pulse run --week 2026-W42 --from classify --until aggregate" in report
     later = FakeLLM({"classify": labeller(current_themes)})
     resumed = run(
         tmp_settings,
@@ -234,3 +235,79 @@ def test_resume_keeps_earlier_report_sections(tmp_settings: Settings, tmp_store:
     )
     report = (resumed.run_dir / "report.md").read_text()
     assert "## Import" in report and "## Window" in report and "## Top themes" in report
+
+
+def mostly_unthemed() -> Callable:
+    return labeller(lambda system: ("unthemed", "unthemed", "unthemed", *current_themes(system)))
+
+
+def out_of_budget_after(calls: int, handle: Callable, when: Callable[[LLMRequest], bool]) -> Callable:
+    """Runs out of daily budget once `calls` matching requests have been answered."""
+    answered: list[LLMRequest] = []
+
+    def wrapped(req: LLMRequest) -> BaseModel:
+        if when(req):
+            if len(answered) >= calls:
+                raise DailyBudgetExhausted(200_000, 200_000)
+            answered.append(req)
+        return handle(req)
+
+    return wrapped
+
+
+def resume(settings: Settings, store: Store, llm: FakeLLM, stage: str = "classify") -> RunOutcome:
+    return run(settings, store, llm, from_stage=stage, started_at=datetime(2026, 10, 20, 1, tzinfo=UTC))
+
+
+def test_resume_does_not_rediscover_taxonomy_created_in_run(
+    tmp_settings: Settings, tmp_store: Store
+) -> None:  # LLM-8, review C1
+    seed_reviews(tmp_store, 150)
+    tight = out_of_budget_after(2, mostly_unthemed(), lambda req: True)
+    first = run(tmp_settings, tmp_store, FakeLLM({"discover": [discovered()], "classify": tight}))
+    assert first.status == RunStatus.FAILED and tmp_store.latest_taxonomy().version == 1
+    later = FakeLLM({"discover": [discovered(("x1", "x2", "x3"))], "classify": mostly_unthemed()})
+    resumed = resume(tmp_settings, tmp_store, later)
+    assert resumed.status == RunStatus.AGGREGATED and tmp_store.latest_taxonomy().version == 1
+    assert not any(call.stage == "discover" for call in later.calls)
+
+
+def test_resume_after_rediscovery_does_not_rediscover_again(
+    tmp_settings: Settings, tmp_store: Store
+) -> None:  # LLM-8, review C1
+    seed_reviews(tmp_store, 150)
+    seed_taxonomy(tmp_store)
+    new_taxonomy = out_of_budget_after(1, mostly_unthemed(), lambda req: '"orders"' in req.system)
+    first = run(tmp_settings, tmp_store, FakeLLM({"discover": [discovered()], "classify": new_taxonomy}))
+    assert first.status == RunStatus.FAILED and tmp_store.latest_taxonomy().version == 2
+    later = FakeLLM({"discover": [discovered(("x1", "x2", "x3"))], "classify": mostly_unthemed()})
+    resumed = resume(tmp_settings, tmp_store, later)
+    assert resumed.status == RunStatus.AGGREGATED and tmp_store.latest_taxonomy().version == 2
+    assert not any(call.stage == "discover" for call in later.calls)
+    assert "unthemed_high_after_rediscovery" in (resumed.run_dir / "report.md").read_text()
+
+
+def test_resume_drops_warnings_from_rerun_stages(tmp_settings: Settings, tmp_store: Store) -> None:  # OPS-11
+    seed_reviews(tmp_store, 150)
+    seed_taxonomy(tmp_store, NEW_THEMES)
+    broad = labeller(lambda system: ("orders", "orders", "charts", "kyc"))
+    first = run(tmp_settings, tmp_store, FakeLLM({"classify": broad}))
+    assert first.status == RunStatus.AGGREGATED
+    resumed = resume(tmp_settings, tmp_store, FakeLLM({"classify": broad}), stage="aggregate")
+    assert (resumed.run_dir / "report.md").read_text().count("broad_theme:orders") == 1
+
+
+def test_resume_drops_budget_warning_from_older_report(
+    tmp_settings: Settings, tmp_store: Store
+) -> None:  # OPS-11, LLM-13
+    seed_reviews(tmp_store, 150)
+    seed_taxonomy(tmp_store)
+    tight = FakeLLM({"classify": labeller(current_themes)}, tokens_left=2000, tokens_per_call=1000)
+    first = run(tmp_settings, tmp_store, tight)
+    state_path = first.run_dir / "report.json"
+    state = json.loads(state_path.read_text())
+    state.pop("warning_stages", None)  # a report saved before warnings were tagged by stage
+    state_path.write_text(json.dumps(state))
+    resumed = resume(tmp_settings, tmp_store, FakeLLM({"classify": labeller(current_themes)}))
+    assert resumed.status == RunStatus.AGGREGATED
+    assert "daily_token_budget" not in (resumed.run_dir / "report.md").read_text()

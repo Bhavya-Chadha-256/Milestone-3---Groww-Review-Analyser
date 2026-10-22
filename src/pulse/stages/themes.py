@@ -29,7 +29,7 @@ from pulse.pipeline import RunContext, register_stage
 from pulse.timeutil import window_bounds_utc
 
 SAMPLE_SEED = 7  # evaluation §5 rule 4
-RESUME_HINT = "run again after 00:00 UTC with --from {stage}"
+RESUME_HINT = "run again after 00:00 UTC: pulse run --week {week} --from {stage} --until {until}"
 
 
 @register_stage("discover")
@@ -71,15 +71,15 @@ def aggregate_stage(context: RunContext) -> RunStatus:
     labels = _labels(context, taxonomy)
     agg = _aggregate(context, labels, taxonomy)
     threshold = context.settings.themes.rediscover_unthemed_threshold
-    if needs_rediscovery(agg.actionable_unthemed_share, threshold) and not context.state.get(
-        "created_taxonomy"
-    ):
+    unthemed_high = needs_rediscovery(agg.actionable_unthemed_share, threshold)
+    if unthemed_high and not _created_in_run(context, taxonomy):
         rediscovered = _rediscover(context, taxonomy, labels)
         if isinstance(rediscovered, RunStatus):
             return rediscovered
         taxonomy, labels, agg = rediscovered
-        if needs_rediscovery(agg.actionable_unthemed_share, threshold):
-            context.report.warnings.append("unthemed_high_after_rediscovery")  # LLM-8: no second attempt
+        unthemed_high = needs_rediscovery(agg.actionable_unthemed_share, threshold)
+    if unthemed_high and context.report.counts.get("rediscovered"):
+        context.report.warnings.append("unthemed_high_after_rediscovery")  # LLM-8: no second attempt
     context.save_artifact("aggregates.json", asdict(agg))
     context.report.warnings.extend(agg.warnings)
     context.report.sections["LLM usage"] = _usage_section(context)
@@ -102,6 +102,7 @@ def _rediscover(  # craftsman-ignore: WARN-PY001 (regex counts the return tuple)
         taxonomy = _discover_new(context, eligible)
     except DailyBudgetExhausted:
         return _budget_failure(context, "discover", "daily_token_budget: rediscovery could not finish")
+    context.report.counts["rediscovered"] = True  # persisted, so a resumed run never rediscovers twice
     _use_taxonomy(context, taxonomy)
     result = _classify(context, eligible, taxonomy)
     if result.stopped_for_budget:
@@ -135,15 +136,19 @@ def _discover_new(context: RunContext, eligible: list[Review]) -> Taxonomy:
         name_max_words=themes.name_max_words,
     )
     context.store.save_taxonomy(taxonomy)
-    context.state["created_taxonomy"] = True
     return taxonomy
+
+
+def _created_in_run(context: RunContext, taxonomy: Taxonomy) -> bool:
+    """Read from the taxonomy itself, so the guard survives a `--from` resume (LLM-8)."""
+    return taxonomy.created_from_run == context.run_id
 
 
 def _use_taxonomy(context: RunContext, taxonomy: Taxonomy) -> None:
     context.state["taxonomy"] = taxonomy
     context.save_artifact("taxonomy.json", taxonomy)
     context.report.counts["taxonomy_version"] = taxonomy.version
-    created = " (created in this run)" if context.state.get("created_taxonomy") else ""
+    created = " (created in this run)" if _created_in_run(context, taxonomy) else ""
     lines = [f"- `{theme.id}` **{theme.name}**: {theme.definition}" for theme in taxonomy.themes]
     context.report.sections["Taxonomy"] = f"Version {taxonomy.version}{created}:\n" + "\n".join(lines)
 
@@ -218,7 +223,8 @@ def _llm(context: RunContext) -> object:
 
 
 def _budget_failure(context: RunContext, stage: str, message: str) -> RunStatus:
-    line = f"{message}; {RESUME_HINT.format(stage=stage)}"  # LLM-13
+    hint = RESUME_HINT.format(week=context.window.iso_week, stage=stage, until=context.opts.until_stage)
+    line = f"{message}; {hint}"  # LLM-13
     context.report.warnings.append(line)
     context.report.sections.setdefault("Classification", line)
     return RunStatus.FAILED

@@ -174,8 +174,9 @@ def run_pipeline(  # craftsman-ignore: PY003, WARN-PY001 (plan interface; hint o
             llm=llm,
             gateway_factory=gateway_factory,
         )
-        if opts.from_stage:  # OPS-11: keep the sections earlier stages wrote
+        if opts.from_stage:  # OPS-11: keep what earlier stages wrote, drop the rerun stages' warnings
             context.report = RunReport.load_state(context.run_dir / "report.json")
+            context.report.forget_stages(stages)
         status = _run_stages(context, stages)
         return RunOutcome(run_id, status, context.run_dir)
 
@@ -199,15 +200,25 @@ def _run_stages(context: RunContext, stages: list[str]) -> RunStatus:
     try:
         for stage in stages:
             context.stage = stage
-            status = STAGE_FUNCS[stage](context) or status
+            status = _run_stage(context, stage, status)
             if status in STOPPING_STATUSES:
                 break
     except Exception:
         status = RunStatus.FAILED
-        context.report.warnings.append(f"stage_failed:{context.stage}")
         raise
     finally:
         context.report.write(context.run_dir / "report.md", f"Run report — {context.run_id}")
         context.report.save_state(context.run_dir / "report.json")
         context.store.set_run_status(context.run_id, status, **context.report.counts)
     return status
+
+
+def _run_stage(context: RunContext, stage: str, status: RunStatus) -> RunStatus:
+    mark = len(context.report.warnings)
+    try:
+        return STAGE_FUNCS[stage](context) or status
+    except Exception:
+        context.report.warnings.append(f"stage_failed:{stage}")
+        raise
+    finally:
+        context.report.tag_warnings(stage, since=mark)
