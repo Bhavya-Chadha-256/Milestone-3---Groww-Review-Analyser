@@ -168,4 +168,5 @@ Phase 5 paused (2026-10-22) at the user's request ("stop after stage 5 is implem
 Task 5.3: complete (commit 7dd41ee, tests: uv run pytest tests/test_pipeline_deliver.py tests/test_doctor.py → 11 passed; suite 437 passed)
 Docs refresh (2026-10-22, before a context switch): architecture.md (MCP §6 as built, §3.4/3.6/3.9/5.4 updates, §14 new decisions, §15 Q3/Q5 resolved, judge line fixed, layout), CLAUDE.md (commands, mcp 2.x + workspace-mcp, where-we-are), implementation.md (new-session start steps, stale plan lines annotated). No code change.
 Docs refresh 2 (2026-10-22 17:30 IST, before a window change): Handoff gained user decisions, session notes (backfill state, how to recreate the schedule, laptop requirements, extra-key answer, token breakdown, tool-listing script), waiting-on-user (Phase 5 review go-ahead, push); Task 6.4 + architecture §12 record the plan gap (weekly job must fetch before run); architecture §5.5 token breakdown; README points to the tool-listing script.
+Hand-over (2026-10-22 17:35 IST): both backfill cron jobs in the original chat cancelled; the new chat owns the backfill and must reschedule it.
 ```
