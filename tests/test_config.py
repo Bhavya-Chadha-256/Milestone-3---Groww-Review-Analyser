@@ -26,9 +26,12 @@ def test_loads_default_config() -> None:
     assert settings.window.weeks == 12 and settings.window.timezone == "Asia/Kolkata"
     themes = settings.themes
     assert (themes.min, themes.max, themes.top_n, themes.name_max_words) == (3, 5, 3, 4)
-    assert settings.pulse.max_words == 250 and settings.llm.max_run_cost_usd == 15.0
-    assert settings.llm.model == "claude-opus-5-5" and settings.judge_model == "claude-opus-5-5"
-    assert settings.llm.stages["classify"].effort == "low"
+    assert settings.pulse.max_words == 250
+    llm = settings.llm
+    assert (llm.provider, llm.model, llm.api_key_env) == ("groq", "openai/gpt-oss-120b", "GROQ_API_KEY")
+    assert settings.judge_model == "qwen/qwen3.8-27b"
+    assert (llm.limits.tpm, llm.limits.tpd, llm.daily_token_reserve) == (8000, 200000, 20000)
+    assert llm.stages["classify"].effort == "low" and llm.pricing.input == 0.0
 
 
 def test_unmodified_roundtrip_loads(tmp_path: Path) -> None:
@@ -75,7 +78,8 @@ def test_unknown_llm_stage_is_rejected(tmp_path: Path) -> None:
         ("themes", "discovery_sample", 0),
         ("themes", "name_max_words", 0),
         ("llm", "classify_chunk_size", 0),
-        ("llm", "max_run_cost_usd", -1),
+        ("llm", "daily_token_reserve", -1),
+        ("monitoring", "daily_tokens_warn", 5),
         ("pulse", "max_words", -250),
         ("pulse", "retries", -1),
         ("monitoring", "skipped_share_warn", 5),
@@ -90,7 +94,7 @@ def test_out_of_range_tunables_are_rejected(tmp_path: Path, case: tuple[str, str
         load_settings(path)
 
 
-@pytest.mark.parametrize("case", [("input", -4), ("batch_discount", 0), ("cache_write_multiplier", 0.5)])
+@pytest.mark.parametrize("case", [("input", -4), ("output", -1)])
 def test_out_of_range_pricing_is_rejected(tmp_path: Path, case: tuple[str, float]) -> None:
     key, bad_value = case
     path = write_config(tmp_path, lambda config: config["llm"]["pricing"].update({key: bad_value}))
@@ -133,4 +137,22 @@ def test_ingest_settings_defaults(settings: Settings) -> None:
 def test_ingest_settings_reject_unknown_language(tmp_path: Path, languages: list[str]) -> None:
     path = write_config(tmp_path, lambda config: config["ingest"].update(languages=languages))
     with pytest.raises(ValidationError, match="languages"):
+        load_settings(path)
+
+
+def test_stage_max_tokens_must_fit_the_per_minute_limit(tmp_path: Path) -> None:  # LLM-12
+    path = write_config(tmp_path, lambda config: config["llm"]["stages"]["discover"].update(max_tokens=9000))
+    with pytest.raises(ValidationError, match="tpm"):
+        load_settings(path)
+
+
+def test_daily_reserve_must_be_below_the_daily_limit(tmp_path: Path) -> None:
+    path = write_config(tmp_path, lambda config: config["llm"].update(daily_token_reserve=200000))
+    with pytest.raises(ValidationError, match="daily_token_reserve"):
+        load_settings(path)
+
+
+def test_effort_rejects_levels_groq_does_not_offer(tmp_path: Path) -> None:
+    path = write_config(tmp_path, lambda config: config["llm"]["stages"]["compose"].update(effort="max"))
+    with pytest.raises(ValidationError, match="effort"):
         load_settings(path)

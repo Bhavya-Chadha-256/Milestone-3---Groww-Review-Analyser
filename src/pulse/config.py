@@ -25,7 +25,6 @@ Share = Annotated[float, Above(0), AtMost(1)]
 """A fraction in (0, 1]. Rejects percent-style typos such as 20 for 0.20."""
 
 REQUIRED_STAGES = ("discover", "classify", "quotes", "compose", "judge")
-MAX_OUTPUT_TOKENS = 128_000  # claude-opus-5-5 output limit
 
 
 class StrictModel(BaseModel):
@@ -87,32 +86,39 @@ class ThemesSettings(StrictModel):
         return self
 
 
-Effort = Literal["low", "medium", "high", "xhigh", "max"]
+Effort = Literal["low", "medium", "high"]  # Groq reasoning_effort levels
 
 
 class StageConfig(StrictModel):
     effort: Effort
-    max_tokens: Annotated[int, Above(0), AtMost(MAX_OUTPUT_TOKENS)]
+    max_tokens: PositiveInt  # max_completion_tokens; must fit within limits.tpm
 
 
 class Pricing(StrictModel):
-    """USD per million tokens; cache writes cost input × multiplier; batch usage × discount."""
+    """USD per million tokens; 0 on Groq's free tier."""
 
-    input: NonNegativeFloat
-    output: NonNegativeFloat
-    cache_read: NonNegativeFloat
-    cache_write_multiplier: Annotated[float, AtLeast(1)]
-    batch_discount: Share
+    input: NonNegativeFloat = 0.0
+    output: NonNegativeFloat = 0.0
+
+
+class RateLimits(StrictModel):
+    """Per-model limits of the provider plan (Groq free plan; verify at console.groq.com/settings/limits)."""
+
+    rpm: PositiveInt = 30
+    tpm: PositiveInt = 8000
+    rpd: PositiveInt = 1000
+    tpd: PositiveInt = 200000
 
 
 class LLMSettings(StrictModel):
+    provider: Literal["groq"] = "groq"
     model: str
-    fallbacks: Literal["default"] | None = "default"
+    api_key_env: str = "GROQ_API_KEY"
     classify_chunk_size: PositiveInt = 50
-    batch_threshold: PositiveInt = 500
-    max_run_cost_usd: PositiveFloat = 15.0
+    limits: RateLimits = RateLimits()
+    daily_token_reserve: NonNegativeInt = 20000  # kept back from classification for later stages
     stages: dict[str, StageConfig]
-    pricing: Pricing
+    pricing: Pricing = Pricing()
 
     @model_validator(mode="after")
     def stages_are_exactly_required(self) -> Self:
@@ -122,6 +128,15 @@ class LLMSettings(StrictModel):
             raise ValueError(
                 f"llm.stages must be exactly {REQUIRED_STAGES}; missing={missing}, unknown={unknown}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def requests_fit_the_limits(self) -> Self:
+        too_big = sorted(name for name, stage in self.stages.items() if stage.max_tokens >= self.limits.tpm)
+        if too_big:
+            raise ValueError(f"llm.stages {too_big}: max_tokens must be below limits.tpm ({self.limits.tpm})")
+        if self.daily_token_reserve >= self.limits.tpd:
+            raise ValueError(f"llm.daily_token_reserve must be below limits.tpd ({self.limits.tpd})")
         return self
 
 
@@ -148,6 +163,7 @@ class MonitoringSettings(StrictModel):
     unclassified_warn: Share = 0.01
     cost_spike_factor: PositiveFloat = 2.0
     retries_warn: NonNegativeInt = 1
+    daily_tokens_warn: Share = 0.80  # M-COST-2: share of a model's daily token limit
 
 
 class EvalSettings(StrictModel):

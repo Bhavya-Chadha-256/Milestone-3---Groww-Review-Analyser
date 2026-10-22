@@ -21,18 +21,19 @@ themes:
   rediscover_unthemed_threshold: 0.20
   seed_hints: [onboarding, KYC, payments, statements, withdrawals]
 llm:
-  model: claude-opus-5-5
-  fallbacks: default
+  provider: groq                         # Groq free tier (architecture §5.1); key in .env as GROQ_API_KEY
+  model: openai/gpt-oss-120b
+  api_key_env: GROQ_API_KEY
   classify_chunk_size: 50
-  batch_threshold: 500
-  max_run_cost_usd: 15.0
-  stages:
-    discover: { effort: high,   max_tokens: 16000 }
-    classify: { effort: low,    max_tokens: 16000 }
-    quotes:   { effort: medium, max_tokens: 8000 }
-    compose:  { effort: high,   max_tokens: 16000 }
-    judge:    { effort: medium, max_tokens: 8000 }
-  pricing: { input: 4.00, output: 20.00, cache_read: 0.20, cache_write_multiplier: 1.25, batch_discount: 0.5 }
+  limits: { rpm: 30, tpm: 8000, rpd: 1000, tpd: 200000 }   # per model; confirmed tpm/rpd from response headers 2026-10-22
+  daily_token_reserve: 20000             # kept back from classification for quotes and compose
+  stages:                                # effort = reasoning_effort (gpt-oss only); max_tokens = max_completion_tokens
+    discover: { effort: medium, max_tokens: 3000 }
+    classify: { effort: low,    max_tokens: 2500 }
+    quotes:   { effort: medium, max_tokens: 2000 }
+    compose:  { effort: high,   max_tokens: 3000 }
+    judge:    { effort: low,    max_tokens: 1000 }
+  pricing: { input: 0.0, output: 0.0 }   # USD per million tokens; 0 on the free tier
 pulse:
   max_words: 250
   quotes: 3
@@ -54,8 +55,9 @@ monitoring:
   unclassified_warn: 0.01
   cost_spike_factor: 2.0
   retries_warn: 1
+  daily_tokens_warn: 0.80                # M-COST-2
 evals:
-  judge_model: null                      # null = llm.model (same model as pipeline)
+  judge_model: qwen/qwen3.8-27b          # a different family from the pipeline model (architecture §9)
   judge_majority_flip_rate: 0.05
 delivery:
   drive_folder_id: <FOLDER_ID>

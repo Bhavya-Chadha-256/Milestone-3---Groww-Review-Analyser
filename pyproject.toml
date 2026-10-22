@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Weekly pulse of public Groww app-store reviews, delivered to Google Docs and Gmail via MCP"
 requires-python = ">=3.12"
 dependencies = [
-    "anthropic",
     "mcp",
     "pydantic>=2",
     "pyyaml",
@@ -14,6 +13,7 @@ dependencies = [
     "anyio",
     "google-play-scraper>=1.2.7",
     "python-dotenv>=1.2.4",
+    "groq>=1.7.0",
 ]
 
 [project.optional-dependencies]

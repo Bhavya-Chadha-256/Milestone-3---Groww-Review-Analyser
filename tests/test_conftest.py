@@ -4,7 +4,7 @@ from pulse.config import Settings
 
 
 def test_settings_fixture_loads_repo_config(settings: Settings) -> None:
-    assert settings.llm.model == "claude-opus-5-5"
+    assert settings.llm.model == "openai/gpt-oss-120b"
 
 
 def test_tmp_settings_paths_are_isolated(tmp_settings: Settings, tmp_path: Path) -> None:

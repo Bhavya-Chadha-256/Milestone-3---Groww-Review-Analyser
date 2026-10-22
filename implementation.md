@@ -23,7 +23,8 @@ Update this table whenever a task or phase changes state.
 | 0. Setup | ✅ Complete (2026-10-21), review fixes applied, merged into `main` and tagged `phase-0`. | `phase-0-setup` | 28 tests pass; ruff clean. A fresh-context reviewer said "with fixes"; both Important findings are fixed. **As built** notes sit under each task. |
 | 1. Acquire | ✅ Complete (2026-10-21): reviewed ("with fixes", fixes applied), 93 tests pass, merged into `main` and tagged `phase-1`. **Task 1.4 (Play fetch) added later the same day on `phase-2-normalise`; it merges with Phase 2.** | `phase-1-acquire` | App Store: 100 real reviews (10 Sep–4 Oct); Apple's feed returned 8 of 10 pages empty. Play (Task 1.4): 13,057 reviews covering 27 Jul – 20 Oct. |
 | 2. Normalise | ✅ Complete (2026-10-21): reviewed ("with fixes", 1 Critical + 4 Important fixed), 210 tests pass, merged into `main` and tagged `phase-2` | `phase-2-normalise` | User decisions: every review is stored, and reviews under 8 words or not in English/Hinglish are marked excluded from themes. Play fetch added as Task 1.4. |
-| 3–6 | Not started. Phase 3 was revised from the review data on 2026-10-21 (findings D1–D8) and re-planned for Groq on 2026-10-22 (Task 3.1). | — | — |
+| 3. Themes | 🚧 In progress (2026-10-22): Task 3.1 done | `phase-3-themes` | Groq free tier; findings D1–D8 shape the tasks. |
+| 4–6 | Not started | — | — |
 
 ### Handoff (for a new session, as of 2026-10-21, after Phase 2)
 
@@ -1307,7 +1308,7 @@ monitoring:
 - Removes `maxItems`, `minItems`, `maxLength`, `minLength`, `pattern` and `format` at every depth. Code enforces them after parsing.
 - Sets `additionalProperties: false` on every object and lists **every** property in `required`. Optional fields stay as `anyOf` with `null`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 These use a local `FakeGroq` that records kwargs and returns scripted responses (`SimpleNamespace` with `choices`, `usage` and `model`), plus a fake clock and a fake sleep.
 
@@ -1333,23 +1334,37 @@ def test_classify_reserve_keeps_tokens_for_later_stages(tmp_store): ...    # res
 def test_daily_usage_persists_across_clients(tmp_store): ...               # OPS-6: a new GroqLLM on the same UTC day sees the earlier usage
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_llm_client.py tests/test_ratelimit.py -v`
 Expected: FAIL with ImportError.
 
-- [ ] **Step 3: Implement `schema.py`, `client.py`, `ratelimit.py`, `prompts/__init__.py`, `tests/fakes.py`, the config changes and the `llm_usage` table**
+- [x] **Step 3: Implement `schema.py`, `client.py`, `ratelimit.py`, `prompts/__init__.py`, `tests/fakes.py`, the config changes and the `llm_usage` table**
 
 Check the `groq` SDK's parameter names (`max_completion_tokens`, `reasoning_effort`, `include_reasoning`) and its 429 exception type against the installed version.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_llm_client.py tests/test_ratelimit.py tests/test_config.py -v`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `git commit -m "feat: add Groq structured-output client with rate limiting, daily budget and usage ledger"`
+
+> **As built (2026-10-22):**
+> - **Live check:** the `.env` key works. `openai/gpt-oss-120b` and `qwen/qwen3.8-27b` are both available, and strict `json_schema` plus `reasoning_effort`/`include_reasoning` are accepted. Response headers confirm `x-ratelimit-limit-tokens: 8000` (TPM) and `x-ratelimit-limit-requests: 1000` (RPD) per model. Groq deducts `max_completion_tokens` from TPM up front: about 450 tokens for a call that used 200. A live smoke test through `GroqLLM` on both models used 233 tokens and recorded them in `llm_usage`.
+> - **SDK and config:** `groq` 1.7.0 is installed and `anthropic` removed. `config.py` gained `RateLimits`; `Pricing` is now just `input`/`output` (both default 0); `Effort` is `low | medium | high`. Load errors: a stage `max_tokens` ≥ `limits.tpm`, and `daily_token_reserve` ≥ `limits.tpd`.
+> - **Rate limiter:**
+>   - `acquire` raises `LLMError` for a single request larger than `limits.tpm`, which could never be sent (LLM-12).
+>   - It also enforces `rpd` (requests per day), not only tokens.
+>   - `wait_after_429(None)` waits 10 s.
+>   - `request_tokens` includes an estimate of the schema itself.
+> - **Schemas:** `wire_schema` also strips `title` and `default`, to save tokens.
+> - **Errors:** a missing key raises `LLMError` naming `GROQ_API_KEY` (OPS-10).
+> - **Store:** `add_llm_usage(day, model, tokens, requests=1)` and `llm_usage(day, model) -> (tokens, requests)`.
+> - **Test double:** `FakeLLM` takes `tokens_per_call` (default 1000).
+> - **Extra tests:** `test_rate_limiter_paces_requests_per_minute`, `test_daily_request_limit_is_enforced`, `test_request_larger_than_tpm_is_rejected`, `test_rate_limited_call_waits_then_retries`, `test_daily_budget_stops_before_sending`, `test_usage_is_recorded_per_day_and_model`, `test_missing_api_key_raises_clear_error`, and config tests for the limit checks and effort levels.
 
 ---
 

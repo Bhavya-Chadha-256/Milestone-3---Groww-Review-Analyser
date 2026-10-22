@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS runs (
     window TEXT NOT NULL, summary TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS runs_iso_week ON runs (iso_week);
 CREATE TABLE IF NOT EXISTS deliveries (iso_week TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS llm_usage (
+    day TEXT NOT NULL, model TEXT NOT NULL, tokens INTEGER NOT NULL, requests INTEGER NOT NULL,
+    PRIMARY KEY (day, model));
 """
 
 ID_CHUNK = 500  # stays well under SQLite's bound-parameter limit
@@ -199,3 +202,21 @@ class Store:
                 "INSERT OR REPLACE INTO deliveries (iso_week, data) VALUES (?, ?)",
                 (delivery.iso_week, delivery.model_dump_json()),
             )
+
+    # LLM usage (daily token budget, Task 3.1)
+
+    def add_llm_usage(self, day: str, model: str, tokens: int, requests: int = 1) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO llm_usage (day, model, tokens, requests) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (day, model) DO UPDATE SET tokens = tokens + excluded.tokens, "
+                "requests = requests + excluded.requests",
+                (day, model, tokens, requests),
+            )
+
+    def llm_usage(self, day: str, model: str) -> tuple[int, int]:
+        """(tokens, requests) used on `day` (UTC, ISO date) by `model`."""
+        row = self.conn.execute(
+            "SELECT tokens, requests FROM llm_usage WHERE day = ? AND model = ?", (day, model)
+        ).fetchone()
+        return (row[0], row[1]) if row else (0, 0)
